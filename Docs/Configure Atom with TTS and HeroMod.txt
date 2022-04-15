@@ -1,12 +1,18 @@
-1. Download Atom.                https://atom.io/
-2. Install TTS Plug-in for Atom. https://api.tabletopsimulator.com/atom/
-   *** Note
-   If you get errors similar to "npm ERR! code UNABLE_TO_GET_ISSUER_CERT_LOCALLY", try turning off your VPN and / or disabling your firewall temproraily.
-3. Configure TTS integration for Atom:
+1. Download Atom.                
+   https://atom.io/
+2. Install TTS Plug-in for Atom. 
+   https://api.tabletopsimulator.com/atom/
+   *** Note ***
+   If you get errors similar to "npm ERR! code UNABLE_TO_GET_ISSUER_CERT_LOCALLY", try turning off your VPN and / or disabling your firewall temporarily.
+3. Clone the TTSHeroMod github.
+   a. Navigate to https://github.com/Thirtybird/TTSHeroMod
+   b. Click the green Code dropdown.
+   c. If you don't use GitHub or SVN, download the ZIP and extract to a local directory of your preference.
+4. Configure TTS integration for Atom:
    a. Navigate to File->Settings->Packages
    b. Click the "settings" button in the "tabletopsimulator-lua" tab
-   c. Set the "Base path for files you wish to bundle or #Include" to the Local Github clone directory
-
+   c. Set the "Base path for files you wish to bundle or #Include" to the local directory from step 3c.
+   
 Gobal.ttslua should only have one line in it
 #include !/HeroMod/heromod
 
