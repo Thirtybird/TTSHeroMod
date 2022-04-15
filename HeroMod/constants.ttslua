@@ -1,0 +1,312 @@
+
+CONST = {showMsg = true, noShowMsg = false}
+
+bodyColor = "#BB0000"
+stunColor = "#BBBB00"
+endColor = "#00BB00"
+
+status = {
+    { shortName="Stun",   isActive = false, isCustom = false, name="Stunned",     startPost="is now stunned",          seguePost="was stunned, but ",     finishPost="is no longer stunned",          tool="Stunned: 1/2 DCV/DMCV"},
+    { shortName="KO",     isActive = false, isCustom = false, name="Knocked Out", startPost="is now knocked out",      seguePost="was knocked out, but ", finishPost="is no longer knocked out",      tool="Knocked Out: 0 OCV, DCV, MCV & x2 Stun"},
+    { shortName="Dying",  isActive = false, isCustom = false, name="Dying",       startPost="is now dying",            seguePost="was dying, but ",       finishPost="is no longer dying",            tool="Dying: Lose one BODY per Turn"},
+    { shortName="Prone",  isActive = false, isCustom = false, name="Prone",       startPost="is now prone",            seguePost="",                      finishPost="is no longer prone",            tool="Prone: 1/2 DCV, 1/2 phase to stand"},
+    { shortName="Rec",    isActive = false, isCustom = false, name="Recovery",    startPost="is now recovering",       seguePost="",                      finishPost="is no longer recovering",       tool="Recovery: regain END & STUN equal to REC"},
+    { shortName="Cust1",  isActive = false, isCustom = true,  name="Custom1",     startPost="now has a custom status", seguePost="",                      finishPost="no longer has a custom status", tool="Custom Status: Defined by the player"},
+    { shortName="Blind",  isActive = false, isCustom = false, name="Blind",       startPost="is now blind",            seguePost="",                      finishPost="is no longer blind",            tool="Blind: Loss of targeting sense"},
+    { shortName="Deaf",   isActive = false, isCustom = false, name="Deaf",        startPost="is now deaf",             seguePost="",                      finishPost="is no longer deaf",             tool="Deaf: Loss of non-targeting sense"},
+    { shortName="Cust2",  isActive = false, isCustom = true,  name="Custom2",     startPost="now has a custom status", seguePost="",                      finishPost="no longer has a custom status", tool="Custom Status: Defined by the player"},
+}
+
+-- time is actually divided by 2 to get number of phases (so 1 time = 1/2 phase, 2 times = 1 phase etc) i.e. time is counted in 1/2 phases
+-- if DCV mod is 0.5, then halve existing DCV .. anything else add to it
+
+mvr = {
+    {name="Block",            ocvMod= 0, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=true,  againstOCV=true,  time=1, level=0, active=1, effect="Block HTH attacks, Abort",                                       tool="Block: ½ Phase, +0 OCV, +0 DCV, Block HTH attacks, Abort.",                                                       post=""},
+    {name="Brace",            ocvMod= 0, dcvMod= 0.5, useRanged=true,  rangeMod=2, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=0, level=0, active=1, effect="+2 OCV only to offset the Range Modifier",                       tool="Brace: 0 Phase, +0 OCV, ½ DCV, +2 RMod only to offset the Range Modifier.",                                       post=""},
+    {name="Brace & Set",      ocvMod= 1, dcvMod= 0.5, useRanged=true,  rangeMod=2, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=2, level=0, active=1, effect="1+ OCV & +2 OCV only to offset the Range Modifier",              tool="Brace & Set: 1 Phase, +1 OCV, ½ DCV, +2 RMod only to offset the Range Modifier.",                                 post=""},
+    {name="Disarm",           ocvMod=-2, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Disarm target, requires STR vs. STR Roll",                       tool="Disarm: ½ Phase, -2 OCV, +0 DCV, Disarm target, requires STR vs. STR Roll.",                                      post=""},
+    {name="Dodge",            ocvMod= 0, dcvMod= 3,   useRanged=false, rangeMod=0, dice=3, toHit=false,targetCheck=false, toPost=true,  halfDice=false, abort=true,  againstOCV=false, time=1, level=0, active=1, effect="Dodge all attacks, Abort",                                       tool="Dodge: ½ Phase, +0 OCV, +3 DCV, Dodge all attacks, Abort.",                                                       post="prepares to dodge against all attacks"},
+    {name="Grab",             ocvMod=-1, dcvMod=-2,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Grab Two Limbs; can Squeeze, Slam, or Throw",                    tool="Grab: ½ Phase, -1 OCV, -2 DCV, Grab Two Limbs; can Squeeze, Slam, or Throw.",                                     post=""},
+    {name="Grab By",          ocvMod=-3, dcvMod=-4,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Move and Grab object, +(v/10) to STR",                           tool="Grab By: ½ Phase, -3 OCV, -4 DCV, Move and Grab object, +(v/10) to STR.",                                         post=""},
+    {name="Haymaker",         ocvMod= 0, dcvMod=-5,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="+4 Damage Classes to any attack",                                tool="Haymaker: ½ Phase, +0 OCV, -5 DCV, +4 Damage Classes to any attack.",                                             post=""},
+    {name="Move By",          ocvMod=-2, dcvMod=-2,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=4, effect="((STR/2) + (v/10))d6; attacker takes 1/3 damage",                tool="Move By: ½ Phase, -2 OCV, -2 DCV, ((STR/2) + (v/10))d6; attacker takes 1/3 damage.",                              post=""},
+    {name="Move Through",     ocvMod= 0, dcvMod=-2,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=4, effect="(STR + (v/6))d6; attacker takes ½ or full damage, OCV is -v/10", tool="Move Through: ½ Phase, -v/10 OCV, -2 DCV, (STR + (v/6))d6; attacker takes ½ or full damage, OCV is -v/10.",       post=""},
+    {name="Multiple Attack",  ocvMod= 0, dcvMod= 0.5, useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Attack one or more targets multiple times",                      tool="Multiple Attack: 1 Phase, +0 OCV, ½ DCV, Attack one or more targets multiple times.",                             post=""},
+    {name="Set",              ocvMod= 1, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=false,targetCheck=false, toPost=true,  halfDice=false, abort=false, againstOCV=false, time=2, level=0, active=1, effect="Take extra time to aim a Ranged attack at a target",             tool="Set: 1 Phase, +1 OCV, +0 DCV, Take extra time to aim a Ranged attack at a target.",                               post="sets sights on a target"},
+    {name="Shove",            ocvMod=-1, dcvMod=-1,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Push target back 1m per 5 STR used",                             tool="Shove: ½ Phase, -1 OCV, -1 DCV, Push target back 1m per 5 STR used.",                                             post=""},
+    {name="Strike",           ocvMod= 0, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="STR damage or by weapon type",                                   tool="Strike: ½ Phase, +0 OCV, +0 DCV, STR damage or by weapon type.",                                                  post=""},
+    {name="Throw",            ocvMod= 0, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Throw object or character, does STR damage",                     tool="Throw: ½ Phase, +0 OCV, +0 DCV, Throw object or character, does STR damage.",                                     post=""},
+    {name="Trip",             ocvMod=-1, dcvMod=-2,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Knock a target to the ground, making him Prone",                 tool="Trip: ½ Phase, -1 OCV, -2 DCV, Knock a target to the ground, making him Prone.",                                  post=""},
+    {name="Choke",            ocvMod=-2, dcvMod=-2,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="NND 1d6 (see text), Grab One Limb",                              tool="Choke: ½ Phase, -2 OCV, -2 DCV, NND 1d6 (see text), Grab One Limb.",                                              post=""},
+    {name="Club Weapon",      ocvMod= 0, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Killing weapon does equivalent Normal Damage",                   tool="Club Weapon: ½ Phase, +0 OCV, +0 DCV, Killing weapon does equivalent Normal Damage.",                             post=""},
+    {name="Cover",            ocvMod=-2, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Target held at gunpoint",                                        tool="Cover: ½ Phase, -2 OCV, +0 DCV, Target held at ½gunpoint½.",                                                      post=""},
+    {name="Dive For",         ocvMod= 0, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=true,  againstOCV=false, time=1, level=0, active=1, effect="Character avoids attack; Abort",                                 tool="Dive For: ½ Phase, +0 OCV, +0 DCV, Character avoids attack; Abort.",                                              post=""},
+    {name="Hipshot",          ocvMod=-1, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="+1 DEX only for purposes of initiative",                         tool="Hipshot: ½ Phase, -1 OCV, +0 DCV, +1 DEX only for purposes of initiative.",                                       post=""},
+    {name="Pulling A Punch",  ocvMod= 0, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Strike, normal STUN damage, ½ BODY damage",                      tool="Pulling A Punch: ½ Phase, -1/5d6 OCV, +0 DCV, Strike, normal STUN damage, ½ BODY damage.",                        post=""},
+    {name="Roll With A Punch",ocvMod=-2, dcvMod=-2,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=true,  againstOCV=true,  time=1, level=0, active=1, effect="Block after being hit, take ½ damage; Abort",                    tool="Roll With A Punch: ½ Phase, -2 OCV, -2 DCV, Block after being hit, take ½ damage; Abort.",                        post=""},
+    {name="Snap Shot",        ocvMod=-1, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=2, level=0, active=1, effect="Lets character duck back behind cover",                          tool="Snap Shot: 1 Phase, -1 OCV, +0 DCV, Lets character duck back behind cover.",                                      post=""},
+    {name="Strafe",           ocvMod= 0, dcvMod=-2,   useRanged=true,  rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Make Ranged attack while moving",                                tool="Strafe: ½ Phase, -v/6 OCV, -2 DCV, Make Ranged attack while moving.",                                             post=""},
+    {name="Suppression Fire", ocvMod=-2, dcvMod= 0,   useRanged=false, rangeMod=0, dice=3, toHit=true, targetCheck=false, toPost=false, halfDice=false, abort=false, againstOCV=false, time=1, level=0, active=1, effect="Continuous fire through an area, must be Autofire",              tool="Suppression Fire: ½ Phase, -2 OCV, +0 DCV, Continuous fire through an area, must be Autofire.",                   post=""},
+}
+
+half        = "½"
+checkMark   = "✓"
+crossMark   = "✗"
+holdMark    = "<b>⤴</b>"
+figureSpace = " "
+wideDash    = "―"
+figureDash  = "‒"
+superOne    = "¹"
+superTwo    = "²"
+halfSpace   = " "
+
+local statList = {"str","dex","con","int","ego","pre","spd","rec","body","end","stun","ocv","dcv","omcv","dmcv"}
+
+sections = {
+    Primary=    { hidden=false, selfHidden=false, order=1,  numRows = 5, default=true  ,name="Primary",     rows={"statrowpri1","statrowpri2","statrowpri3","statrowpri4","statrowpri5"} },
+    Secondary=  { hidden=false, selfHidden=false, order=2,  numRows = 5, default=false ,name="Secondary",   rows={"statrowsec1","statrowsec2","statrowsec3","statrowsec4","statrowsec5"} },
+    Movement=   { hidden=false, selfHidden=false, order=3,  numRows = 1, default=false ,name="Movement",    rows={"moverow"} },
+    Change=     { hidden=false, selfHidden=false, order=4,  numRows = 2, default=false ,name="Change",      rows={"changerow1","changerow2"} },
+    Distance=   { hidden=false, selfHidden=false, order=5,  numRows = 1, default=false ,name="Distance",    rows={"distancerow"} },
+    SkillRolls= { hidden=false, selfHidden=false, order=6,  numRows = 3, default=false ,name="Skill Rolls", rows={"skillsrow1","skillsrow2","skillsrow3"} },
+    Maneuver =  { hidden=false, selfHidden=false, order=7,  numRows = 3, default=false ,name="Maneuver",    rows={"martialsRow1","martialsRow2","martialsRow3"} },
+    Location=   { hidden=false, selfHidden=false, order=8,  numRows = 1, default=false ,name="Location",    rows={"locationrow"} },
+    DiceRolls=  { hidden=false, selfHidden=false, order=10, numRows = 2, default=false ,name="Dice Rolls",  rows={"Header","diceRow"}  },
+    RollMaker=  { hidden=false, selfHidden=false, order=11, numRows =15, default=false ,name="Roll Maker",  rows={"Header","createDoing","typeRow","spaceLineRow","typeLineRow","diceMakeRow","killingRow","targetRow","targetBaseRow","toHitRow","toHitTwoRow","moreRow","toolRow","saveNameRow","deleteSaveCancelRow"}  },
+    Combat=     { hidden=false, selfHidden=false, order=12, numRows = 5, default=false ,name="Combat",      rows={"combatrow1","combatrow2","combatrow3","combatrow4","combatrow5"} },
+    Health=     { hidden=false, selfHidden=false, order=13, numRows = 3, default=false ,name="Health",      rows={"healthrow1","healthrow2","healthrow3"} },
+    Link=       { hidden=false, selfHidden=false, order=14, numRows = 1, default=false ,name="Link",        rows={"linkrow1"} },
+}
+hitLocation = {
+    {result= 3, handed=false, location="Head",     stun="x5", nstun="x2",  body="x2", toHit="-8 OCV", tool="Stun x5, N Stun x2,  Body x2"},
+    {result= 4, handed=false, location="Head",     stun="x5", nstun="x2",  body="x2", toHit="-8 OCV", tool="Stun x5, N Stun x2,  Body x2"},
+    {result= 5, handed=false, location="Head",     stun="x5", nstun="x2",  body="x2", toHit="-8 OCV", tool="Stun x5, N Stun x2,  Body x2"},
+    {result= 6, handed=true,  location="Hand",     stun="x1", nstun="x½",  body="x½", toHit="-6 OCV", tool="Stun x1, N Stun x½,  Body x½"},
+    {result= 7, handed=true,  location="Arm",      stun="x2", nstun="x½",  body="x½", toHit="-5 OCV", tool="Stun x2, N Stun x½,  Body x½"},
+    {result= 8, handed=true,  location="Arm",      stun="x2", nstun="x½",  body="x½", toHit="-5 OCV", tool="Stun x2, N Stun x½,  Body x½"},
+    {result= 9, handed=true,  location="Shoulder", stun="x3", nstun="x1",  body="x1", toHit="-5 OCV", tool="Stun x3, N Stun x1,  Body x1"},
+    {result=10, handed=false, location="Chest",    stun="x3", nstun="x1",  body="x1", toHit="-3 OCV", tool="Stun x3, N Stun x1,  Body x1"},
+    {result=11, handed=false, location="Chest",    stun="x3", nstun="x1",  body="x1", toHit="-3 OCV", tool="Stun x3, N Stun x1,  Body x1"},
+    {result=12, handed=false, location="Stomach",  stun="x4", nstun="x1½", body="x1", toHit="-7 OCV", tool="Stun x4, N Stun x1½, Body x1"},
+    {result=13, handed=false, location="Vitals",   stun="x4", nstun="x1½", body="x2", toHit="-8 OCV", tool="Stun x4, N Stun x1½, Body x2"},
+    {result=14, handed=true,  location="Thigh",    stun="x2", nstun="x1",  body="x1", toHit="-4 OCV", tool="Stun x2, N Stun x1,  Body x1"},
+    {result=15, handed=true,  location="Leg",      stun="x2", nstun="x½",  body="x½", toHit="-6 OCV", tool="Stun x2, N Stun x½,  Body x½"},
+    {result=16, handed=true,  location="Leg",      stun="x2", nstun="x½",  body="x½", toHit="-6 OCV", tool="Stun x2, N Stun x½,  Body x½"},
+    {result=17, handed=true,  location="Foot",     stun="x1", nstun="x½",  body="x½", toHit="-8 OCV", tool="Stun x1, N Stun x½,  Body x½"},
+    {result=18, handed=true,  location="Foot",     stun="x1", nstun="x½",  body="x½", toHit="-8 OCV", tool="Stun x1, N Stun x½,  Body x½"},
+    {result=19, handed=true,  location="Foot",     stun="x1", nstun="x½",  body="x½", toHit="-8 OCV", tool="Stun x1, N Stun x½,  Body x½"}
+}
+locationTables = {
+    {name='Normal',    halfDice=false, killingAttack=false, gameEdition=6, dice=3, stunMultiplierMod=0, diceMod=0,  targetCheck=false, tool='Normal shot [3d6]', tempMod = 0, location = hitLocation},
+    {name='Head shot', halfDice=false, killingAttack=false, gameEdition=6, dice=1, stunMultiplierMod=0, diceMod=3,  targetCheck=false, tool='Head shot [1d6+3]', tempMod = 0, location = hitLocation},
+    {name='High shot', halfDice=false, killingAttack=false, gameEdition=6, dice=2, stunMultiplierMod=0, diceMod=1,  targetCheck=false, tool='High shot [2d6+1]', tempMod = 0, location = hitLocation},
+    {name='Body shot', halfDice=false, killingAttack=false, gameEdition=6, dice=2, stunMultiplierMod=0, diceMod=4,  targetCheck=false, tool='Body shot [2d6+4]', tempMod = 0, location = hitLocation},
+    {name='Low shot',  halfDice=false, killingAttack=false, gameEdition=6, dice=2, stunMultiplierMod=0, diceMod=7,  targetCheck=false, tool='Low shot  [2d6+7]', tempMod = 0, location = hitLocation},
+    {name='Leg shot',  halfDice=false, killingAttack=false, gameEdition=6, dice=1, stunMultiplierMod=0, diceMod=12, targetCheck=false, tool='Leg shot [1d6+12]', tempMod = 0, location = hitLocation}
+}
+
+skillLookup={
+    ['acrobatics']=             {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['acting']=                 {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['analyze']=                {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['animal handler']=         {type="interaction",stat="pre", base="2",   increment="2", familiarity=true, proficiency=true},
+    ['autofire skills']=        {type="combat",     stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['breakfall']=              {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['bribery']=                {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['bugging']=                {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['bureaucratics']=          {type="interaction",stat="pre", case="3",   increment="2", familiarity=true, proficiency=true},
+    ['charm=']=                 {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['climbing']=               {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['combat driving']=         {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['combat piloting']=        {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['combat skill levels']=    {type="combat",     stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['computer programming']=   {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['concealment']=            {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['contortionist']=          {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['conversation']=           {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['cramming']=               {type="intellect",  stat="-",   base="5",   increment="-", familiarity=true, proficiency=true},
+    ['criminology']=            {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['cryptography']=           {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['deduction']=              {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['defence maneuver']=       {type="combat",     stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['demolitions']=            {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['disguise']=               {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['electronics']=            {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['fast draw']=              {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['forensic medicine']=      {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['forgery']=                {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['gambling']=               {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['high society']=           {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['interrogation']=          {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['inventor']=               {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['knowledge skill']=        {type="background", stat="11",  base="2",   increment="1", familiarity=true, proficiency=true},
+    ['language']=               {type="background", stat="-",   base="1",   increment="1", familiarity=true, proficiency=true},
+    ['lipreading']=             {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['lockpicking']=            {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['martial arts']=           {type="combat",     stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['mechanics']=              {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['mimicry']=                {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['navigation']=             {type="intellect",  stat="int", base="2",   increment="2", familiarity=true, proficiency=true},
+    ['oratory']=                {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['paramedics']=             {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['penalty skill levels']=   {type="combat",     stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['persuasion']=             {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['perception']=             {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['power']=                  {type="varies",     stat="-",   base="3",   increment="2", familiarity=true, proficiency=true},
+    ['professional skill']=     {type="background", stat="11",  base="2",   increment="1", familiarity=true, proficiency=true},
+    ['rapid attack']=           {type="combat",     stat="-",   base="10",  increment="-", familiarity=true, proficiency=true},
+    ['riding']=                 {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['science skill']=          {type="background", stat="11",  base="2",   increment="1", familiarity=true, proficiency=true},
+    ['security systems']=       {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['shadowing']=              {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['skill levels']=           {type="-",          stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['sleight of hand']=        {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['stealth']=                {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['streetwise']=             {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['survival']=               {type="intellect",  stat="int", base="2",   increment="2", familiarity=true, proficiency=true},
+    ['systems operation']=      {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['tactics']=                {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['teamwork']=               {type="agility",    stat="dex", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['tracking']=               {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['trading']=                {type="interaction",stat="pre", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['transport familiarity']=  {type="background", stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['two-weapon fighting']=    {type="combat",     stat="-",   base="10",  increment="-", familiarity=true, proficiency=true},
+    ['ventiloquism']=           {type="intellect",  stat="int", base="3",   increment="2", familiarity=true, proficiency=true},
+    ['weapon familiarity']=     {type="combat",     stat="-",   base="-",   increment="-", familiarity=true, proficiency=true},
+    ['weaponsmith']=            {type="intellect",  stat="int", base="2",   increment="2", familiarity=true, proficiency=true},
+}
+
+
+--local baseCharacter = [[
+--{"name":"Base Character","str":{"value":"10","shortname":"str","name":"Strength","roll":"11-","damage":"2d6"},"dex":{"value":"10","shortname":"dex","name":"Dexterity","roll":"11-","damage":""},"con":{"value":"10","shortname":"con","name":"Constitution","roll":"11-","damage":""},"int":{"value":"10","shortname":"int","name":"Intelligence","roll":"11-","damage":""},"ego":{"value":"10","shortname":"ego","name":"Ego","roll":"11-","damage":""},"pre":{"value":"10","shortname":"pre","name":"Presence","roll":"11-","damage":"2d6"},"spd":{"value":"2","shortname":"spd","name":"Speed","roll":"","damage":""},"ocv":{"value":"3","shortname":"ocv","name":"Offensive Combat Value","roll":"","damage":""},"dcv":{"value":"3","shortname":"dcv","name":"Defensive Combat Value","roll":"","damage":""},"omcv":{"value":"3","shortname":"omcv","name":"Offensive Mental Combat Value","roll":"","damage":""},"dmcv":{"value":"3","shortname":"dmcv","name":"Defensive Mental Combat Value","roll":"","damage":""},"pd":{"value":"2","shortname":"pd","name":"Physical Defence","roll":"","damage":""},"pdr":{"value":"0","shortname":"pdr","name":"Physical Resistant Defence","roll":"","damage":""},"ed":{"value":"2","shortname":"ed","name":"Energy Defence","roll":"","damage":""},"edr":{"value":"0","shortname":"edr","name":"Energy Resistant Defence","roll":"","damage":""},"per":{"value":"11-","shortname":"per","name":"Perception Roll","roll":"11-","damage":""},"rec":{"value":"4","shortname":"rec","name":"Recovery","roll":"","damage":""},"body":{"value":"10","shortname":"body","name":"Body","roll":"","damage":""},"end":{"value":"20","shortname":"end","name":"Endurance","roll":"","damage":""},"stun":{"value":"20","shortname":"stun","name":"Stun","roll":"","damage":""},"movement":{"run":{"combat":"12m","noncombat":"24m","icon":"ui_run"},"swim":{"combat":"4m","noncombat":"8m","icon":"ui_swim"},"leap":{"combat":"4m","noncombat":"8m","icon":"ui_leap"}},"skills":[{"name":"Perception","roll":"11-"},{"name":"Acting","roll":"8-"},{"name":"Climbing","roll":"8-"},{"name":"Concealment","roll":"8-"},{"name":"Deduction","roll":"8-"},{"name":"Language: English (completely fluent; literate) (4 Active Points)","roll":""},{"name":"Paramedics","roll":"8-"},{"name":"Persuasion","roll":"8-"},{"name":"PS","roll":"11-"},{"name":"Shadowing","roll":"8-"},{"name":"Stealth","roll":"8-"},{"name":"TF: Everyman Skill, Small Motorized Ground Vehicles","roll":""},{"name":"AK","roll":"8-"}],"attacks":[],"martialArts":[{"name":"Other Attacks","gameEdition":6,"ocvMod":0,"dcvMod":0,"rngMod":0,"dice":3,"toHit":true,"toPost":false,"halfDice":false,"abort":false,"againstOCV":false,"post":"","effect":"Normal Attack","time":"½","level":0,"killingAttack":false,"active":1,"targetNumber":0,"targetCheck":false,"stunMultiplierMod":0,"tool":"Other Attacks: ½ Phase, +0 OCV, +0 DCV, +0 RMod, Normal Attack."}],"rolls":[]}
+--]]
+
+local baseCharacter = [[
+{
+"name":"Base Character",
+"version":2.3,
+"edition":6,
+"stats":{
+"siz":{"value":0,"roll":"","damage":"","shortname":"siz","name":"Size","current":"primary","primary":{"value":0,"roll":"","mod":0},"secondary":{"value":0,"roll":"","mod":0},"notes":"NO STAT FOUND"},
+"str":{"value":10,"roll":"11-","damage":"","shortname":"str","name":"Strength","current":"primary","primary":{"value":10,"roll":"11-","mod":0},"secondary":{"value":10,"roll":"11-","mod":0},"notes":"HTH Damage 2d6  END [1]"},
+"dex":{"value":10,"roll":"11-","damage":"","shortname":"dex","name":"Dexterity","current":"primary","primary":{"value":10,"roll":"11-","mod":0},"secondary":{"value":10,"roll":"11-","mod":0},"notes":""},
+"con":{"value":10,"roll":"11-","damage":"","shortname":"con","name":"Constitution","current":"primary","primary":{"value":10,"roll":"11-","mod":0},"secondary":{"value":10,"roll":"11-","mod":0},"notes":""},
+"int":{"value":10,"roll":"11-","damage":"","shortname":"int","name":"Intelligence","current":"primary","primary":{"value":10,"roll":"11-","mod":0},"secondary":{"value":10,"roll":"11-","mod":0},"notes":"PER Roll 11-"},
+"ego":{"value":10,"roll":"11-","damage":"","shortname":"ego","name":"Ego","current":"primary","primary":{"value":10,"roll":"11-","mod":0},"secondary":{"value":10,"roll":"11-","mod":0},"notes":""},
+"com":{"value":0,"roll":"","damage":"","shortname":"com","name":"Comliness","current":"primary","primary":{"value":0,"roll":"","mod":0},"secondary":{"value":0,"roll":"","mod":0},"notes":"NO STAT FOUND"},
+"pre":{"value":10,"roll":"11-","damage":"","shortname":"pre","name":"Presence","current":"primary","primary":{"value":10,"roll":"11-","mod":0},"secondary":{"value":10,"roll":"11-","mod":0},"notes":"PRE Attack: 2d6"},
+"spd":{"value":2,"roll":"9-","damage":"","shortname":"spd","name":"Speed","current":"primary","primary":{"value":2,"roll":"9-","mod":0},"secondary":{"value":2,"roll":"9-","mod":0},"notes":"Phases: 6, 12"},
+"ocv":{"value":3,"roll":"10-","damage":"","shortname":"ocv","name":"Offensive Combat Value","current":"primary","primary":{"value":3,"roll":"10-","mod":0},"secondary":{"value":3,"roll":"10-","mod":0},"notes":""},
+"dcv":{"value":3,"roll":"10-","damage":"","shortname":"dcv","name":"Defensive Combat Value","current":"primary","primary":{"value":3,"roll":"10-","mod":0},"secondary":{"value":3,"roll":"10-","mod":0},"notes":""},
+"omcv":{"value":3,"roll":"10-","damage":"","shortname":"omcv","name":"Offensive Mental Combat Value","current":"primary","primary":{"value":3,"roll":"10-","mod":0},"secondary":{"value":3,"roll":"10-","mod":0},"notes":""},
+"dmcv":{"value":3,"roll":"10-","damage":"","shortname":"dmcv","name":"Defensive Mental Combat Value","current":"primary","primary":{"value":3,"roll":"10-","mod":0},"secondary":{"value":3,"roll":"10-","mod":0},"notes":""},
+"pd":{"value":2,"roll":"9-","damage":"","shortname":"pd","name":"Physical Defence","current":"primary","primary":{"value":2,"roll":"9-","mod":0},"secondary":{"value":2,"roll":"9-","mod":0},"notes":"2 PD (0 rPD)"},
+"pdr":{"value":2,"roll":"9-","damage":"","shortname":"pdr","name":"Physical Resistant Defence","current":"primary","primary":{"value":2,"roll":"9-","mod":0},"secondary":{"value":2,"roll":"9-","mod":0},"notes":"2 PD (0 rPD)"},
+"ed":{"value":2,"roll":"9-","damage":"","shortname":"ed","name":"Energy Defence","current":"primary","primary":{"value":2,"roll":"9-","mod":0},"secondary":{"value":2,"roll":"9-","mod":0},"notes":"2 ED (0 rED)"},
+"edr":{"value":2,"roll":"9-","damage":"","shortname":"edr","name":"Energy Resistant Defence","current":"primary","primary":{"value":2,"roll":"9-","mod":0},"secondary":{"value":2,"roll":"9-","mod":0},"notes":"2 ED (0 rED)"},
+"per":{"value":10,"roll":"11-","damage":"","shortname":"per","name":"Perception Roll","current":"primary","primary":{"value":0,"roll":"11-","mod":0},"secondary":{"value":0,"roll":"11-","mod":0},"notes":""},
+"rec":{"value":4,"roll":"10-","damage":"","shortname":"rec","name":"Recovery","current":"primary","primary":{"value":4,"roll":"10-","mod":0},"secondary":{"value":4,"roll":"10-","mod":0},"notes":""},
+"body":{"value":10,"roll":"11-","damage":"","shortname":"body","name":"Body","current":"primary","primary":{"value":10,"roll":"11-","mod":0},"secondary":{"value":10,"roll":"11-","mod":0},"notes":""},
+"end":{"value":20,"roll":"13-","damage":"","shortname":"end","name":"Endurance","current":"primary","primary":{"value":20,"roll":"13-","mod":0},"secondary":{"value":20,"roll":"13-","mod":0},"notes":""},
+"stun":{"value":20,"roll":"13-","damage":"","shortname":"stun","name":"Stun","current":"primary","primary":{"value":20,"roll":"13-","mod":0},"secondary":{"value":20,"roll":"13-","mod":0},"notes":""},
+"def":{"value":0,"roll":"","damage":"","shortname":"def","name":"Defence","current":"primary","primary":{"value":0,"roll":"","mod":0},"secondary":{"value":0,"roll":"","mod":0},"notes":"NO STAT FOUND"}},
+"movement":{
+"run":{"current":"primary","combat":"12m","noncombat":"24m","primary":{"combat":{"description":"12m","value":12},"noncombat":{"description":"24m","value":24}},"secondary":{"combat":{"description":"12m","value":12},"noncombat":{"description":"24m","value":24}},"icon":"ui_run","notes":""},
+"swim":{"current":"primary","combat":"4m","noncombat":"8m","primary":{"combat":{"description":"4m","value":4},"noncombat":{"description":"8m","value":8}},"secondary":{"combat":{"description":"4m","value":4},"noncombat":{"description":"8m","value":8}},"icon":"ui_swim","notes":""},
+"leap":{"current":"primary","combat":"4m","noncombat":"8m","primary":{"combat":{"description":"4m/2m","value":4},"noncombat":{"description":"8m","value":8}},"secondary":{"combat":{"description":"4m/2m","value":4},"noncombat":{"description":"8m","value":8}},"icon":"ui_leap","notes":"4m forward, 2m upward"}},
+"skills":[
+    {"name":"Perception ","roll":"11-","type":"Perception","input":"","level":"0","active":"0","base":"0","XMLID":"PERCEPTION","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Perception 11-"},
+    {"name":"Acting ","roll":"8-","uid":1590869497061,"type":"Acting","input":"","level":"0","active":"0","base":"0","XMLID":"ACTING","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Acting 8-"},
+    {"name":"Climbing ","roll":"8-","uid":1590869497062,"type":"Climbing","input":"","level":"0","active":"0","base":"0","XMLID":"CLIMBING","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Climbing 8-"},
+    {"name":"Concealment ","roll":"8-","uid":1590869497065,"type":"Concealment","input":"","level":"0","active":"0","base":"0","XMLID":"CONCEALMENT","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Concealment 8-"},
+    {"name":"Deduction ","roll":"8-","uid":1590869497066,"type":"Deduction","input":"","level":"0","active":"0","base":"0","XMLID":"DEDUCTION","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Deduction 8-"},
+    {"name":"Language: English (completely fluent; literate) (4 Active Points) ","roll":"","uid":1590869497076,"type":"Language","input":"Englishcompletely fluent","level":"0","active":"4","base":"4","XMLID":"LANGUAGES","modifiers":[],"adders":[{"name":"No Name Supplied","uid":1590869497067,"type":"literate","input":"","level":"0"}],"option":"completely fluent","optionAlias":"completely fluent","optionID":"ACCENT","text":"Language: English (completely fluent; literate) (4 Active Points)"},
+    {"name":"Paramedics ","roll":"8-","uid":1590869497077,"type":"Paramedics","input":"","level":"0","active":"0","base":"0","XMLID":"PARAMEDICS","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Paramedics 8-"},
+    {"name":"Persuasion ","roll":"8-","uid":1590869497078,"type":"Persuasion","input":"","level":"0","active":"0","base":"0","XMLID":"PERSUASION","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Persuasion 8-"},
+    {"name":"PS ","roll":"11-","uid":1590869497079,"type":"Professional Skill","input":"","level":"0","active":"0","base":"0","XMLID":"PROFESSIONAL_SKILL","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"PS 11-"},
+    {"name":"Shadowing ","roll":"8-","uid":1590869497080,"type":"Shadowing","input":"","level":"0","active":"0","base":"0","XMLID":"SHADOWING","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Shadowing 8-"},
+    {"name":"Stealth ","roll":"8-","uid":1590869497081,"type":"Stealth","input":"","level":"0","active":"0","base":"0","XMLID":"STEALTH","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"Stealth 8-"},
+    {"name":"TF: Everyman Skill, Small Motorized Ground Vehicles ","roll":"","uid":1590869497157,"type":"Transport Familiarity","input":"","level":"0","active":"0","base":"0","XMLID":"TRANSPORT_FAMILIARITY","modifiers":[],"adders":[{"name":"No Name Supplied","uid":1590869497085,"type":"Common Motorized Ground Vehicles","input":"","level":"0"},{"name":"No Name Supplied","uid":1590869497086,"type":"","input":"","level":"0"}],"option":"","optionAlias":"","optionID":"","text":"TF: Everyman Skill, Small Motorized Ground Vehicles"},
+    {"name":"AK ","roll":"8-","uid":1590869497158,"type":"Knowledge Skill","input":"","level":"0","active":"0","base":"0","XMLID":"KNOWLEDGE_SKILL","modifiers":[],"adders":[],"option":"","optionAlias":"","optionID":"","text":"AK 8-"}],
+"talents":[],
+"perks":[],
+"disads":[],
+"combatlevels":[],
+"powers":[],
+"equipment":[],
+"martialArts":[
+    {"name":"Other Attacks","gameEdition":6 ,"ocvMod":0,"dcvMod":0,"dice":3,"halfDice":false,"killingAttack":false,"effect":"Normal Attack","time":"½","level":"0","active":"1","targetNumber":0,"targetCheck":false,"stunMultiplierMod":0,"tool":"Other Attacks:½ Phase, +0 OCV, +0 DCV, Normal attack","toHit":true,"againstOCV":false,"toPost":false,"post":"","rngMod":0,"abort":false}],
+"rolls":[],
+"lightningReflex":[{"name":"Lightning Reflexes","levels":0,"tool":"No Lightning Reflexes","isActive":false}]
+}
+]]
+
+
+jsonKeyWords = {"weight","appversion","exportid","playername","version","edition","stat","stats","siz","str","dex","con","int","ego","com","pre","spd","ocv","dcv","omcv","dmcv","pd","pdr","ed","edr","per","rec","body","stun","def","roll","everyman","familiarity","proficiency","cost","option","optionAlias","optionID","text","combat","noncombat","description","icon","notes","movement","run","fly","swim","leap","skills","mod","shortname","current","secondary","primary","talents","perks","disads","powers","combatlevels","glide","swing","teleport","tunnel","level","base","input","range","XMLID","attack","adjustment","mental","sensory","class","bodyaffecting","strMod","compound","defense","move","modifiers","special","senseaffecting","value","name","type","damage","uid","adders","end","active","equipment","martialArts","gameEdition","ocvMod","dcvMod","halfDice","time","killingAttack","effect","dice","targetCheck","tool","toHit","targetNumber","stunMultiplierMod","toPost","againstOCV","abort","post","rngMod","rolls","diceMod","lightningReflex","levels","isActive","useOCV","useDCV","stdEffect"}
+
+timeLine = {
+    {"―","―","―","―","―","―","⑦","―","―","―","―","―","<b>ⓡ</b>","―","―","―","―","―","―","⑦","―","―","―","―","―","<b>ⓡ</b>","―","―","―","―","―","―","⑦","―","―","―","―","―","<b>ⓡ</b>",},--01
+    {"―","―","―","―","―","⑥","―","―","―","―","―","⑫","<b>ⓡ</b>","―","―","―","―","―","⑥","―","―","―","―","―","⑫","<b>ⓡ</b>","―","―","―","―","―","⑥","―","―","―","―","―","⑫","<b>ⓡ</b>",},--02
+    {"―","―","―","④","―","―","―","⑧","―","―","―","⑫","<b>ⓡ</b>","―","―","―","④","―","―","―","⑧","―","―","―","⑫","<b>ⓡ</b>","―","―","―","④","―","―","―","⑧","―","―","―","⑫","<b>ⓡ</b>",},--03
+    {"―","―","③","―","―","⑥","―","―","⑨","―","―","⑫","<b>ⓡ</b>","―","―","③","―","―","⑥","―","―","⑨","―","―","⑫","<b>ⓡ</b>","―","―","③","―","―","⑥","―","―","⑨","―","―","⑫","<b>ⓡ</b>",},--04
+    {"―","―","③","―","⑤","―","―","⑧","―","⑩","―","⑫","<b>ⓡ</b>","―","―","③","―","⑤","―","―","⑧","―","⑩","―","⑫","<b>ⓡ</b>","―","―","③","―","⑤","―","―","⑧","―","⑩","―","⑫","<b>ⓡ</b>",},--05
+    {"―","②","―","④","―","⑥","―","⑧","―","⑩","―","⑫","<b>ⓡ</b>","―","②","―","④","―","⑥","―","⑧","―","⑩","―","⑫","<b>ⓡ</b>","―","②","―","④","―","⑥","―","⑧","―","⑩","―","⑫","<b>ⓡ</b>",},--06
+    {"―","②","―","④","―","⑥","⑦","―","⑨","―","⑪","⑫","<b>ⓡ</b>","―","②","―","④","―","⑥","⑦","―","⑨","―","⑪","⑫","<b>ⓡ</b>","―","②","―","④","―","⑥","⑦","―","⑨","―","⑪","⑫","<b>ⓡ</b>",},--07
+    {"―","②","③","―","⑤","⑥","―","⑧","⑨","―","⑪","⑫","<b>ⓡ</b>","―","②","③","―","⑤","⑥","―","⑧","⑨","―","⑪","⑫","<b>ⓡ</b>","―","②","③","―","⑤","⑥","―","⑧","⑨","―","⑪","⑫","<b>ⓡ</b>",},--08
+    {"―","②","③","④","―","⑥","⑦","⑧","―","⑩","⑪","⑫","<b>ⓡ</b>","―","②","③","④","―","⑥","⑦","⑧","―","⑩","⑪","⑫","<b>ⓡ</b>","―","②","③","④","―","⑥","⑦","⑧","―","⑩","⑪","⑫","<b>ⓡ</b>",},--09
+    {"―","②","③","④","⑤","⑥","―","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>","―","②","③","④","⑤","⑥","―","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>","―","②","③","④","⑤","⑥","―","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>",},--10
+    {"―","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>","―","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>","―","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>",},--11
+    {"①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>","①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>","①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫","<b>ⓡ</b>",},--12
+}
+
+speedChart = {
+    {7},--1
+    {6,12},--2
+    {4, 8,12},--3
+    {3, 6, 9,12},--4
+    {3, 5, 8,10,12},--5
+    {2, 4, 6, 8,10,12},--6
+    {2, 4, 6, 7, 9,11,12},--7
+    {2, 3, 5, 6, 8, 9,11,12},--8
+    {2, 3, 4, 6, 7, 8,10,11,12},--9
+    {2, 3, 4, 5, 6, 8, 9,10,11,12},--10
+    {2, 3, 4, 5, 6, 7, 8, 9,10,11,12},--11
+    {1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12},--12
+}
+speedWhenChart = {
+    {0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0},
+    {0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,1},
+    {0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1},
+    {0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1},
+    {0,0,1,0,1,0,0,1,0,1,0,1,0,0,1,0,1,0,0,1,0,1,0,1},
+    {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1},
+    {0,1,0,1,0,1,1,0,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,1},
+    {0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1,1,0,1,1},
+    {0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1},
+    {0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1},
+    {0,1,1,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1},
+    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+}
+
+speedNextChart = {
+{7, 7, 7, 7, 7,  7, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 43, 43, 43, 43, 43, 43, 43, 43, 43, 43, 43, 43, 55, 55, 55, 55, 55, 55},
+{6, 6, 6, 6, 6, 12, 12, 12, 12, 12, 12, 18, 18, 18, 18, 18, 18, 24, 24, 24, 24, 24, 24, 30, 30, 30, 30, 30, 30, 36, 36, 36, 36, 36, 36, 42, 42, 42, 42, 42, 42, 48, 48, 48, 48, 48, 48, 54},
+{4, 4, 4, 8, 8,  8,  8, 12, 12, 12, 12, 16, 16, 16, 16, 20, 20, 20, 20, 24, 24, 24, 24, 28, 28, 28, 28, 32, 32, 32, 32, 36, 36, 36, 36, 40, 40, 40, 40, 44, 44, 44, 44, 48, 48, 48, 48, 52},
+{3, 3, 6, 6, 6,  9,  9,  9, 12, 12, 12, 15, 15, 15, 18, 18, 18, 21, 21, 21, 24, 24, 24, 27, 27, 27, 30, 30, 30, 33, 33, 33, 36, 36, 36, 39, 39, 39, 42, 42, 42, 45, 45, 45, 48, 48, 48, 51},
+{3, 3, 5, 5, 8,  8,  8, 10, 10, 12, 12, 15, 15, 15, 17, 17, 20, 20, 20, 22, 22, 24, 24, 27, 27, 27, 29, 29, 32, 32, 32, 34, 34, 36, 36, 39, 39, 39, 41, 41, 44, 44, 44, 46, 46, 48, 48, 51},
+{2, 4, 4, 6, 6,  8,  8, 10, 10, 12, 12, 14, 14, 16, 16, 18, 18, 20, 20, 22, 22, 24, 24, 26, 26, 28, 28, 30, 30, 32, 32, 34, 34, 36, 36, 38, 38, 40, 40, 42, 42, 44, 44, 46, 46, 48, 48, 50},
+{2, 4, 4, 6, 6,  7,  9,  9, 11, 11, 12, 14, 14, 16, 16, 18, 18, 19, 21, 21, 23, 23, 24, 26, 26, 28, 28, 30, 30, 31, 33, 33, 35, 35, 36, 38, 38, 40, 40, 42, 42, 43, 45, 45, 47, 47, 48, 50},
+{2, 3, 5, 5, 6,  8,  8,  9, 11, 11, 12, 14, 14, 15, 17, 17, 18, 20, 20, 21, 23, 23, 24, 26, 26, 27, 29, 29, 30, 32, 32, 33, 35, 35, 36, 38, 38, 39, 41, 41, 42, 44, 44, 45, 47, 47, 48, 50},
+{2, 3, 4, 6, 6,  7,  8, 10, 10, 11, 12, 14, 14, 15, 16, 18, 18, 19, 20, 22, 22, 23, 24, 26, 26, 27, 28, 30, 30, 31, 32, 34, 34, 35, 36, 38, 38, 39, 40, 42, 42, 43, 44, 46, 46, 47, 48, 50},
+{2, 3, 4, 5, 6,  8,  8,  9, 10, 11, 12, 14, 14, 15, 16, 17, 18, 20, 20, 21, 22, 23, 24, 26, 26, 27, 28, 29, 30, 32, 32, 33, 34, 35, 36, 38, 38, 39, 40, 41, 42, 44, 44, 45, 46, 47, 48, 50},
+{2, 3, 4, 5, 6,  7,  8,  9, 10, 11, 12, 14, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 38, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 50},
+{2, 3, 4, 5, 6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49},
+}
+
+
+
+currentStateMerge = {}
+currentNumberOfRolls = 1
+previousNumberOfRolls = 0
+
+cachedChar ={}

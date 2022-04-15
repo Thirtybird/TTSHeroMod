@@ -1,0 +1,118 @@
+function pl(var) -- print in logstyle
+    print(logString(var))
+end
+
+function getNumber(value)
+    if value == "" then return 0 end
+    if value == nil then return 0 end
+    return tonumber(value)
+end
+
+function getBool(oddString)
+    if type(oddString) == "nil" then return false end
+    if type(oddString) == "boolean" then return oddString end
+    if string.lower(oddString) == "true" then return true end
+    return false
+end
+
+function gatn(id, attr)
+    return getNumber(gat(id, attr))
+end
+
+function gatb(id, attr)
+    return getBool(gat(id, attr))
+end
+
+function gat(id, attr)
+--    if pass then
+        return UI.getAttribute(id, attr)
+--    else
+--      print (logString("did not get PASS, with " .. id))
+--      return UI.getAttribute("BLA"..id, attr)
+--    end
+end
+
+function getHalf(halfTest) -- return half character on true
+    if halfTest then return "½" end
+    return ""
+end
+
+function addPlusNoZero(posNum) -- add plus to a zero or above
+    if posNum == nil then return "" end
+    if posNum > 0 then return "+" .. posNum end
+    if posNum == 0 then return "" end
+    return posNum
+end
+
+function iif ( cond , T , F )
+    if cond then return T else return F end
+end
+
+function copy(obj, seen)
+  if type(obj) ~= 'table' then return obj end
+  if seen and seen[obj] then return seen[obj] end
+  local s = seen or {}
+  local res = setmetatable({}, getmetatable(obj))
+  s[obj] = res
+  for k, v in pairs(obj) do res[copy(k, s)] = copy(v, s) end
+  return res
+end
+
+function twodigitnumber(number)
+  if (number != nil) then
+    local numstring = tostring(number)
+    if string.len(numstring) > 1 then
+      return numstring
+    end
+    return "0" .. numstring
+  end
+  return "00"
+end
+
+function Set (list)
+  local set = {}
+  local count = 1
+  for _, l in ipairs(list) do
+    set[l] = count
+    count = count + 1
+  end
+  return set
+end
+
+function firstToUpper(str)
+   return (str:gsub("^%l", string.upper))
+end
+
+function removeWhiteSpace(str)
+  return string.gsub(str, "%s+", "")
+end
+
+function checkDistance(player,state,id)
+  --print("Player: ",player,"State: ", state,"ID: ",id)
+  local objTbl = (player.getSelectedObjects())
+  if #objTbl != 2 then
+    return nil
+  else
+    local mdiff =  objTbl[1].getPosition() - objTbl[2].getPosition()
+    mDistance = math.sqrt(mdiff.x^2 + mdiff.y^2 + mdiff.z^2)
+    --print ("mdiff.x: ",mdiff.x, ", mdiff.y: ",mdiff.y,", mdiff.z: ", mdiff.z )
+    mDistance = math.floor(mDistance * (10/1)) / 10
+    --mDistance = mDistance
+    --print (objTbl[1].getName(), " to ", objTbl[2].getName(), ", = ",  mDistance,"m." )
+    return {distance=mDistance,x=mdiff.x,y=mdiff.y,z=mdiff.z, obj1=objTbl[1].getName(),obj2=objTbl[2].getName()}
+  end
+end
+
+
+function dump(o)  --dump the output of a table to a string suitable for printing
+	if type(o) == 'table' then
+	   local s = '{ '
+	   for k,v in pairs(o) do
+		  if type(k) ~= 'number' then k = '"'..k..'"' end
+		  s = s .. '['..k..'] = ' .. dump(v) .. ','
+	   end
+	   return s .. '} '
+	else
+	   return tostring(o)
+	end
+ end

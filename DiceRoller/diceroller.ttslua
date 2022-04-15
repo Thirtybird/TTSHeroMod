@@ -1,0 +1,762 @@
+--This is the basic distance from the tool a die is spawned
+--This number scales with the scale of the tool
+distanceFromTool = 3.7
+
+--This is the option to collect the dice into ascending order
+organizeDice = true
+
+--Enables or disables auto-cleanup
+-- -1 is off, 0 is no delay, and 1+ is a delay of that many seconds
+autoCleanDelay = 1
+
+--End of variables to edit unless you know how to script
+
+modTable = {{dice="",mod=-1}, {dice="",mod=0}, {dice="",mod=1}, {dice="½d6",mod=0}}
+currentMod = 2
+killTable = {"✗","✓"}
+printTable = {"✗","✓"}
+transTable = {0.3, 1}
+stunTable = {{dice="1d6",mod=-1},{dice="½d6",mod=0}}
+stunModTable = {-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9}
+currentStunMod = 6
+killResults = false
+stunResults = false
+externalPacket = {}
+name = ""
+
+function onSave()
+    local data_to_save = {['hmd']=howManyDice, ['pr']=printResults, ['hr']=halfResults, ['sr']=stunResults, ['kr']=killResults, ['cm']=currentMod, ['cs']=currentStunMod }
+    saved_data = JSON.encode(data_to_save)
+    --saved_data = ""
+    return saved_data
+end
+
+function onload(saved_data)
+    if saved_data ~= "" then
+        local loaded_data = JSON.decode(saved_data)
+        --Set up information off of loaded_data
+        howManyDice = loaded_data.hmd
+        printResults = loaded_data.pr
+        halfResults = loaded_data.hr
+        killResults = loaded_data.kr
+        stunResults = loaded_data.sr
+        currentMod = loaded_data.cm
+        currentStunMod = loaded_data.cs
+    else
+        --Set up information for if there is no saved saved data
+        howManyDice = 1
+        printResults = false
+        currentMod = 2
+        currentStunMod = 6
+        killResults = false
+        stunResults = false
+    end
+
+    math.randomseed(os.time())
+    diceBeingRolled = {}
+    clearLock = false
+    rollLock = false
+
+    createDisplayAndFunctionButtons()
+end
+
+-- External call in - need to bring in and decipher the favourites pad info .. including target and ad-hoc modifiers
+
+function extCall(params)
+
+-- rollList[4] = {['name']='Laser Beam (Killing)', ['halfDice']=false, ['killingAttack']=true, ['gameEdition']=6, ['dice']=3, ['stunMultiplierMod']=0, ['diceMod']=0, ['targetNumber'] = 0, ['targetCheck']=false, ['tool']='3d6 K ½d6' }
+    -- use params to set local variables
+
+    --for key,value in pairs(params) do print(key,": ",value) end
+
+    log(params)
+
+    externalPacket = params
+
+    howManyDice = params.dice
+    self.editButton({index=0, label=howManyDice})
+
+    if params.halfDice then
+        currentMod = 4
+    else
+        currentMod = 2
+    end
+
+    --print ("gott to extCall on road1")
+
+    self.editButton({index=4, label=modOutput()})
+
+    if params.gameEdition == 6 then
+        stunResults = true -- 6e
+    else
+        stunResults = false -- 5e
+    end
+
+    if params.killingAttack then
+        killResults = true
+        local stunStatus = stunTable[trueTwo(stunResults)]['dice']
+        local stunModStatus = (stunTable[trueTwo(stunResults)]['mod'] + params.stunMultiplierMod)
+        if stunModStatus ~= 0 then stunStatus = stunStatus .. addPlus(stunModStatus) end
+    else
+        killResults = false
+    end
+    self.editButton({index=6, label=killTable[trueTwo(killResults)]})
+    self.editButton({index=8, label=stunStatus, font_color={1,1,1,transTable[trueTwo(killResults)]}})
+
+    --print ("gott to extCall on road3")
+
+    if params.killingAttack then
+        killResults = true
+    else
+        killResults = false
+    end
+
+    self.editButton({index=6, label=killTable[trueTwo(killResults)]})
+    self.editButton({index=8, label=stunStatus, font_color={1,1,1,transTable[trueTwo(killResults)]}})
+
+    name = externalPacket.name
+    --print ("gott to extCall on road")
+    buttonClick_roll(self, params.color)
+    --print(params.color)
+end
+
+function howManyExtraDice()
+    local extraDice = 0
+    if modTable[currentMod]['dice'] ~= "" then extraDice = extraDice + 1 end
+    if killResults then extraDice = extraDice + 1 end
+    return extraDice
+end
+
+--Rolling
+--Activates rolling process
+function buttonClick_roll(_, rollerColor)
+    --currentColor = rollerColor
+    --print(_)
+    --print(rollerColor)
+    --currentPlayer = playerName
+    local dieOnPad = findDieOnPad()
+    if dieOnPad ~= nil then
+        if rollLock == false then
+            --Destroys old dice
+            buttonClick_clear(_, rollerColor)
+            --Spawns and rolls new nice
+            rollThisDieType(dieOnPad, rollerColor)
+        else
+            broadcastToColor("Please wait until the dice come to a complete stop before rolling again.", rollerColor, {1,1,1})
+        end
+    else
+        broadcastToColor("Place the die type you want to roll onto the pad and try again.", rollerColor, {1,1,1})
+    end
+end
+
+function rollThisDieType(dieOnPad, rollerColor)
+    function coroutine_rolling()
+        diceBeingRolled = {}
+        clearLock = true
+        rollLock = true
+        -- add to howManyDice for 1/2 dice and mods
+        --modTable = {{dice="",mod=-1}, {dice="",mod=0}, {dice="",mod=1}, {dice="½d6",mod=0}}
+        --currentMod = 2
+        --stunTable = {{dice="1d6",mod=-1},{dice="½d6",mod=0}}
+        --currentStunMod = 6
+        --print ("extraDice ", extraDice, " killresults ", killResults)
+        local angle = 360/(howManyDice + howManyExtraDice())
+        for i=1, howManyDice + howManyExtraDice() do
+            local pos = findGlobalPosWithLocalDirection(self, distanceFromTool*self.getScale().x, angle*(i-1))
+            --Makes a duplicate of the die on the pad
+            local die = dieOnPad.clone({position=pos})
+            table.insert(diceBeingRolled, die)
+            --Gives it a random rotation and waits 1 frame for it to happen
+            die.setRotation(randomRotation())
+            coroutine.yield(0) coroutine.yield(0) coroutine.yield(0)
+
+            --Apply some rotational force in a random direction
+            --die.addTorque(randomRotation())
+            die.roll()
+
+            wait(0.05)
+        end
+        watchForDiceToStop(rollerColor)
+        return 1
+    end
+    startLuaCoroutine(self, "coroutine_rolling")
+end
+
+function iif ( cond , T , F )
+    if cond then return T else return F end
+end
+
+function watchForDiceToStop(rollerColor)
+    function coroutine_placing()
+        dieValueTable, realDiceTable, oddDiceTable, rollString, totalRollValue, bodyRollValue = {}, {}, {}, "", 0, 0
+        local angle = 360/(howManyDice + howManyExtraDice())
+        --Wait for dice to stop moving after their roll
+        for _, die in ipairs(diceBeingRolled) do
+            while die.resting == false do
+                coroutine.yield(0)
+            end
+            local rollValue = die.getValue()
+            table.insert(realDiceTable, {die=die, val=rollValue})
+            table.insert(dieValueTable, {die=die, val=rollValue})
+        end
+        --Sort the dice by their .getValue() in ascending order
+        local sort_func = function(a,b) return a.val < b.val end
+        table.sort(dieValueTable, sort_func)
+        --Move the dice into order and/or prints
+        for i, entry in ipairs(dieValueTable) do
+            --Organizes dice
+            if organizeDice == true then
+                local pos = findGlobalPosWithLocalDirection(self, distanceFromTool*self.getScale().x, angle*(i-1))
+                pos.y = pos.y + 0.5
+                entry.die.setPositionSmooth(pos)
+            end
+        end
+
+        for i, entry in ipairs(realDiceTable) do
+            --Assembles print values
+            local rollValue = entry.val
+            if i <= howManyDice then
+                --if i ~= 1 then rollString = rollString .. ", " end
+                --rollString = rollString .. entry.val
+                --totalRollValue = totalRollValue + rollValue
+                bodyRollValue = bodyRollValue + 1
+                if rollValue == 6 then bodyRollValue = bodyRollValue + 1 end
+                if rollValue == 1 then bodyRollValue = bodyRollValue - 1 end
+            else
+                -- in theory the last two dice will be processed here
+                table.insert(oddDiceTable, {die=entry.die, val=entry.val})
+            end
+        end
+
+        -- **** consider table removal / truncation .. quicker and easier possibly
+        local modDiceValue = 0
+        local stunDiceValue = 0
+        if howManyExtraDice() > 0 then
+            if howManyExtraDice() == 2 then
+                stunDiceValue = calcStunDiceValue(oddDiceTable[1].val)
+                modDiceValue = math.floor((oddDiceTable[2].val / 2) + 0.5)
+                if oddDiceTable[2].val > 3 then -- 4-6
+                    bodyRollValue = bodyRollValue + 1
+                end
+                table.remove(realDiceTable)
+                table.remove(realDiceTable)
+            else
+                if killResults then
+                    stunDiceValue = calcStunDiceValue(oddDiceTable[1].val)
+                else
+                    modDiceValue = math.floor((oddDiceTable[1].val / 2) + 0.5)
+                    if oddDiceTable[1].val > 3 then -- 4-6
+                        bodyRollValue = bodyRollValue + 1
+                    end
+                end
+                table.remove(realDiceTable)
+            end
+        end
+
+        rollString = ""
+        totalRollValue= 0
+        table.sort (realDiceTable, sort_func)
+        for i, entry in ipairs(realDiceTable) do
+            local rollValue = entry.val
+            if i ~= 1 then rollString = rollString .. ", " end
+            rollString = rollString .. entry.val
+            totalRollValue = totalRollValue + rollValue
+        end
+
+        local extDiceMod = 0
+        if extPkt() then
+            if ((externalPacket.tempMod == nil) or (externalPacket.tempMod == ""))  then externalPacket.tempMod = 0 end
+            if ((externalPacket.diceMod == nil) or (externalPacket.diceMod == ""))  then externalPacket.diceMod = 0 end
+            --log (externalPacket)
+            extDiceMod = tonumber(externalPacket.diceMod) + tonumber(externalPacket.tempMod)
+        end
+
+        local finalModValue = modDiceValue + modTable[currentMod]['mod'] + extDiceMod
+
+        log("Stun Dice value: " .. stunDiceValue .. ", Mod Dice value: " .. modDiceValue .. ", Final Mod Value = " .. finalModValue)
+        log("totalRollValue Was: " ..totalRollValue .. " after finalModValue: " .. math.max(totalRollValue + finalModValue,1) )
+
+        local originalRoll =  totalRollValue
+
+        totalRollValue = math.max(totalRollValue + finalModValue, 1)
+
+        local halfDiceDisplay = ""
+        if currentMod == 4 then halfDiceDisplay = "½" end
+
+        if rollerColor == "Black" then broadcastColor = "White"
+        else broadcastColor = rollerColor end
+
+        local totalStunMods = stunModTable[currentStunMod]
+        local playerReference = Player[rollerColor].steam_name
+        if extPkt() then
+            --print("externalPacket.gameEdition ",logString(externalPacket))
+            totalStunMods = iif(externalPacket.stunMultiplierMod,externalPacket.stunMultiplierMod,0) + iif(externalPacket.gameEdition != 6, -1, 0)
+            playerReference = externalPacket.playerName
+        end
+
+        if true then
+            local firstWord, secondValue, secondWord, isKilling, rolledKilling, targetResult, targetOutput = "", "", "", "", "", "", ""
+
+            if not(killResults) then
+                firstWord = "Total"
+                secondValue = bodyRollValue
+                secondWord = "Body"
+                isKilling = ""
+                rolledKilling = ""
+                targetOutput = ""
+            else
+                firstWord = "Body"
+                secondValue = totalRollValue * stunDiceValue
+                secondWord = "Stun"
+                isKilling = " K " .. stunOutput()
+                rolledKilling = " K (" .. (stunDiceValue - totalStunMods) .. ")" ..  addPlusNoZero(totalStunMods)
+                targetOutput = ""
+            end
+
+            local finalOutput = playerReference .. " rolled [DDDDDD]" .. iif(name=="","","'") .. name .. iif(name=="","","' ") .. "[-][" .. howManyDice .. halfDiceDisplay .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]" .. totalRollValue .. "[-], ".. secondWord .. " = " .. "[DDDDDD]" ..  secondValue .. "[-]"
+
+            local DCV = 0
+            if extPkt() then
+                if externalPacket.targetCheck then
+                    if totalRollValue <= externalPacket.targetNumber then
+                        targetResult = "[77FF77] succeeded by "
+                    else
+                        targetResult = "[FF7777] failed by "
+                    end
+                    targetOutput = ", which" ..targetResult..tostring(math.abs((totalRollValue - externalPacket.targetNumber))) .."[-] against the target of [AAAAAA]"..externalPacket.targetNumber .. "[-]"
+                    finalOutput = playerReference .. " rolled [DDDDDD]'" .. name .. "'[-] [" .. howManyDice .. halfDiceDisplay .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]" .. totalRollValue .. "[-]".. targetOutput
+                elseif externalPacket.toHit then
+                    DCV = externalPacket.OCV + iif(externalPacket.ocvMod, externalPacket.ocvMod, 0) + 11 - totalRollValue
+                    if originalRoll == 18 then
+                        finalOutput = playerReference .. " rolled [DDDDDD]'" .. name .. "' [-][" .. howManyDice .. halfDiceDisplay .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]natural 18[-], which cannot hit [FF7777]any D" .. iif(not(externalPacket.useOCV),"M","")  .. "CV[-], with his O" .. iif(not(externalPacket.useOCV),"M","")  .. "CV of ".. externalPacket.OCV .. "[-]"
+                    elseif originalRoll == 3 then
+                        finalOutput = playerReference .. " rolled [DDDDDD]'" .. name .. "' [-][" .. howManyDice .. halfDiceDisplay .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]natural 3[-], which is enough to hit [77FF77]any D" .. iif(not(externalPacket.useOCV),"M","")  .. "CV[-], with his O" .. iif(not(externalPacket.useOCV),"M","")  .. "CV of ".. externalPacket.OCV .. "[-]"
+                    else
+                        log(externalPacket)
+                        finalOutput = playerReference .. " rolled [DDDDDD]'" .. name .. "' [-][" .. howManyDice .. halfDiceDisplay .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]" .. totalRollValue .. "[-], would hit [77FF77]D" .. iif(not(externalPacket.useDCV),"M","")  .. "CV " ..  DCV .. "[-] or less, with his O" .. iif(not(externalPacket.useOCV),"M","")  .. "CV of [DDDDDD]".. externalPacket.OCV + iif(tonumber(externalPacket.ocvMod) ~= 0 ,tonumber(externalPacket.ocvMod),0) .. "[-]" .. iif(tonumber(externalPacket.ocvMod) ~= 0, " (" .. externalPacket.OCV .. addPlusNoZero(iif(tonumber(externalPacket.ocvMod)~=0 , tonumber(externalPacket.ocvMod), 0)).. ")","")
+                    end
+                elseif externalPacket.location then
+                    finalOutput = playerReference .. " rolled [DDDDDD]'" .. name .. "'[-] [" .. howManyDice .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]" .. totalRollValue .. "[-]"
+                elseif externalPacket.stdEffect then
+                    if not(killResults) then
+                        finalOutput = playerReference .. " had a standard effect of [DDDDDD]" .. iif(name=="","","'") .. name .. iif(name=="","","' ") .. "[-][" .. howManyDice .. halfDiceDisplay .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]" .. ((howManyDice * 3)+externalPacket.diceMod + iif(externalPacket.halfDice,1,0)) .. "[-], ".. secondWord .. " = " .. "[DDDDDD]" ..  howManyDice .. "[-]"
+                    else
+                        finalOutput = playerReference .. " had a standard effect of [DDDDDD]" .. iif(name=="","","'") .. name .. iif(name=="","","' ") .. "[-][" .. howManyDice .. halfDiceDisplay .. "d6" .. addPlusNoZero(finalModValue - modDiceValue) .. isKilling .. "]: " ..firstWord .. " = [DDDDDD]" .. ((howManyDice * 3)+externalPacket.diceMod + iif(externalPacket.halfDice,1,0)) .. "[-], ".. secondWord .. " = " .. "[DDDDDD]" ..  (stunDiceValue) * ((howManyDice * 3)+externalPacket.diceMod + iif(externalPacket.halfDice,1,0)) .. "[-]"
+                    end
+                end
+            end
+
+            printToColor(" ", rollerColor, stringColorToRGB(broadcastColor))
+            if extPkt() then
+                --print ("got here externalPacket.print ", externalPacket.print)
+                if externalPacket.print then
+                    broadcastToAll(finalOutput,stringColorToRGB(broadcastColor))
+                else
+                    finalOutput = string.gsub(finalOutput, playerReference, "You") --x = finalOutput:gsub( playerReference, "You")
+                    printToColor(finalOutput, rollerColor, stringColorToRGB(broadcastColor))
+                end
+            else
+                broadcastToAll(finalOutput,stringColorToRGB(broadcastColor))
+            end
+            if extPkt() then
+                if externalPacket.effect then
+                  printToColor(externalPacket.tool, rollerColor, stringColorToRGB(broadcastColor))
+                elseif externalPacket.location then
+                  printToColor("You hit the [DDDDDD]" .. externalPacket.location[totalRollValue-2].location .. ":[-] " .. externalPacket.location[totalRollValue-2].tool, rollerColor, stringColorToRGB(broadcastColor))
+                end
+                if externalPacket.stdEffect then
+                  printToColor("You rolled no dice", rollerColor, stringColorToRGB(broadcastColor))
+                else
+                  --print ("got here to external packet dice output")
+                  printToColor("You rolled: [DDDDDD](" .. rollString .. addCommaNoZero(modDiceValue) .. ")" .. addPlusNoZero(modTable[currentMod]['mod'] + extDiceMod) .. rolledKilling .. "[-]", rollerColor, stringColorToRGB(broadcastColor))
+                end
+            else
+                printToColor("You rolled: [DDDDDD](" .. rollString .. addCommaNoZero(modDiceValue) .. ")" .. addPlusNoZero(modTable[currentMod]['mod'] + extDiceMod) .. rolledKilling .. "[-]", rollerColor, stringColorToRGB(broadcastColor))
+            end
+
+        end
+
+        name = ""
+        externalPacket = {}
+        clearLock = false
+        rollLock = false
+
+        if autoCleanDelay ~= -1 then
+            Timer.create({
+                identifier="uniqueDelayName"..self.getGUID(),
+                delay=autoCleanDelay, function_owner=self, function_name="autoClearTimerFunction"
+            })
+        end
+
+        return 1
+    end
+    startLuaCoroutine(self, "coroutine_placing")
+end
+
+-- return false as 1 and true as 2 (to deal with LUA index from 1)
+function trueTwo(state)
+    if state then return 2 end
+    return 1
+end
+
+function extPkt()
+    if tablelength(externalPacket) ~= 0 then
+        return true
+    else
+        return false
+    end
+end
+
+function tablelength(T)
+  local count = 0
+  for _ in pairs(T) do count = count + 1 end
+  return count
+end
+
+
+function calcStunDiceValue(rollValueWas)
+    local externalMod = 0
+    if tablelength(externalPacket) ~= 0 then
+        externalMod = externalPacket.stunMultiplierMod - stunModTable[currentStunMod]
+    end
+
+    if stunTable[trueTwo(stunResults)]['dice'] == "1d6" then
+        -- 1d6 Stuff (1e-5e)
+        rollValueWas = rollValueWas + stunTable[trueTwo(stunResults)]['mod'] + stunModTable[currentStunMod] + externalMod
+        rollValueWas = math.max(rollValueWas, 1)
+    else
+        -- 1/2d6 Stuff (6e)
+        rollValueWas = math.floor((rollValueWas / 2) + 0.5)
+        rollValueWas = rollValueWas + stunTable[trueTwo(stunResults)]['mod'] + stunModTable[currentStunMod] + externalMod
+        rollValueWas = math.max(rollValueWas, 1)
+    end
+    return rollValueWas
+end
+
+
+-- return stunOutput formatted
+function stunOutput()
+
+    local externalMod = 0
+    if tablelength(externalPacket) ~= 0 then
+        externalMod = externalPacket.stunMultiplierMod - stunModTable[currentStunMod]
+    end
+
+    local stunStatus = stunTable[trueTwo(stunResults)]['dice']
+    local stunModStatus = (stunTable[trueTwo(stunResults)]['mod'] + stunModTable[currentStunMod] + externalMod)
+
+    if stunModStatus ~= 0 then stunStatus = stunStatus .. addPlus(stunModStatus) end
+    return stunStatus
+end
+
+-- return modOutput formatted
+function modOutput()
+    local modDice = modTable[currentMod]['dice']
+    local modNumber = modTable[currentMod]['mod']
+
+    if modNumber ~= 0 then
+        modStatus = modDice .. addPlus(modNumber)
+    else
+        if modDice ~= "" then
+            modStatus = modDice
+        else
+            modStatus = addPlus(modNumber)
+        end
+    end
+    return modStatus
+end
+
+-- add plus to a zero or above
+function addPlus(posNum)
+    if posNum > -1 then return "+" .. posNum end
+    return posNum
+end
+
+-- add plus to a zero or above
+function addPlusNoZero(posNum, addSpaceBool)
+    local spaceAdder = ""
+    if addSpaceBool then spaceAdder = " " end
+    if posNum > 0 then return spaceAdder .. "+" .. posNum end
+    if posNum == 0 then return "" end
+    return spaceAdder .. posNum
+end
+
+-- add plus to a zero or above
+function addCommaNoZero(posNum)
+    if posNum > 0 then return ", [i]" .. posNum .. "[/i]" end
+    if posNum == 0 then return "" end
+    return posNum
+end
+
+
+--Printing
+--Enables/disables printing of results ✗�������
+function buttonClick_print()
+    printResults = not(printResults)
+    self.editButton({index=2, label=printTable[trueTwo(printResults)]})
+end
+
+--Enables/disables half dice - no longer used
+function buttonClick_half()
+    if halfResults == false then halfResults = true
+    else halfResults = false end
+    local halfStatus = "+0"
+    if halfResults == false then halfStatus = "+½d6" end
+    self.editButton({index=4, label=halfStatus})
+end
+
+--Enables/disables kill dice ✗✓
+function buttonClick_kill()
+    killResults = not(killResults)
+    -- local killStatus = trueTwo(killResults)
+    self.editButton({index=6, label=killTable[trueTwo(killResults)]})
+    self.editButton({index=8, label=stunOutput(), font_color={1,1,1,transTable[trueTwo(killResults)]}})
+end
+
+--Switch between 5th and 6th edition stun multiple
+function buttonClick_stun()
+    stunResults = not(stunResults)
+    self.editButton({index=8, label=stunOutput()})
+end
+
+--Clearing
+--Clears rolled dice when called
+-- NO LONGER ACCESIBLE BY PLAYER
+function buttonClick_clear(_, rollerColor)
+    --This line kills and delayed auto-cleanup that might be pending
+    Timer.destroy("uniqueDelayName"..self.getGUID())
+
+    if clearLock == false then
+        for _, die in ipairs(diceBeingRolled) do
+            if die ~= nil then
+                destroyObject(die)
+            end
+        end
+    else
+        broadcastToColor("Please do not hit clear until dice come to a complete stop.", rollerColor, {1,1,1})
+    end
+end
+
+--Timer function which triggers clear when acitvated
+function autoClearTimerFunction()
+    buttonClick_clear()
+end
+
+function returnBool (oddString)
+    if type(oddString) == "boolean" then return oddString end
+    if string.lower(oddString) == "true" then return true end
+    return false
+end
+
+--Plus and Minus buttons
+
+--Adds to counter (how many to roll)
+function setHowMany(params)
+    howManyDice = params.dice
+    self.editButton({index=0, label=howManyDice})
+end
+
+--Adds to counter (how many to roll)
+function buttonClick_plus()
+    howManyDice = howManyDice + 1
+    self.editButton({index=0, label=howManyDice})
+end
+
+--Subtracts from counter (how many to roll)
+function buttonClick_minus()
+    --if howManyDice > 1 then howManyDice = howManyDice - 1 end
+    howManyDice = math.max(howManyDice - 1, 1)
+    self.editButton({index=0, label=howManyDice})
+end
+
+--Adds to stun mod counter
+function buttonClick_StunModPlus()
+    currentStunMod = math.min(currentStunMod + 1, 15)
+    self.editButton({index=8, label=stunOutput()})
+end
+
+--Subtracts from stun mod counter
+function buttonClick_StunModMinus()
+    currentStunMod = math.max(currentStunMod - 1, 1)
+    self.editButton({index=8, label=stunOutput()})
+end
+
+--Adds to mod counter
+function buttonClick_ModPlus()
+    currentMod = math.min(currentMod + 1, 4)
+    self.editButton({index=4, label=modOutput()})
+end
+
+--Subtracts stun mod counter
+function buttonClick_ModMinus()
+    --if currentMod > 1 then currentMod = currentMod - 1 end
+    currentMod = math.max(currentMod - 1, 1)
+    self.editButton({index=4, label=modOutput()})
+end
+
+
+
+--Info finding utility
+--Cast to check for object on pad.
+function findDieOnPad()
+    local pos = self.getPosition()
+    local objectsInArea = Physics.cast({
+        origin=pos, type=2, size={0.2,0.1,0.2},
+        direction={0,1,0}, max_distance=3
+    })
+    for _, entry in ipairs(objectsInArea) do
+        if entry.hit_object.tag == "Dice" then
+            return entry.hit_object
+        end
+    end
+    return nil
+end
+
+--Finds linear distance on the x/z axis between object and position
+function findProximity(targetPos, object)
+    local objectPos = object.getPosition()
+    local xDistance = math.abs(targetPos.x - objectPos.x)
+    local zDistance = math.abs(targetPos.z - objectPos.z)
+    local distance = xDistance^2 + zDistance^2
+    return math.sqrt(distance)
+end
+
+--Finds a position, rotated around the Y axis, using distance you want + angle
+--oPos is object pos, oRot=object rotation, distance = how far, angle = angle in degrees
+function findGlobalPosWithLocalDirection(object, distance, angle)
+    local oPos, oRot = object.getPosition(), object.getRotation()
+    local posX = oPos.x + math.sin( math.rad(angle+oRot.y) ) * distance
+    local posY = oPos.y
+    local posZ = oPos.z + math.cos( math.rad(angle+oRot.y) ) * distance
+    return {x=posX, y=posY, z=posZ}
+end
+
+--Gets a random rotation vector
+function randomRotation()
+    --Credit for this function goes to Revinor (forums)
+    --Get 3 random numbers
+    local u1 = math.random();
+    local u2 = math.random();
+    local u3 = math.random();
+    --Convert them into quats to avoid gimbal lock
+    local u1sqrt = math.sqrt(u1);
+    local u1m1sqrt = math.sqrt(1-u1);
+    local qx = u1m1sqrt *math.sin(2*math.pi*u2);
+    local qy = u1m1sqrt *math.cos(2*math.pi*u2);
+    local qz = u1sqrt *math.sin(2*math.pi*u3);
+    local qw = u1sqrt *math.cos(2*math.pi*u3);
+    --Apply rotation
+    local ysqr = qy * qy;
+    local t0 = -2.0 * (ysqr + qz * qz) + 1.0;
+    local t1 = 2.0 * (qx * qy - qw * qz);
+    local t2 = -2.0 * (qx * qz + qw * qy);
+    local t3 = 2.0 * (qy * qz - qw * qx);
+    local t4 = -2.0 * (qx * qx + ysqr) + 1.0;
+    --Correct
+    if t2 > 1.0 then t2 = 1.0 end
+    if t2 < -1.0 then ts = -1.0 end
+    --Convert back to X/Y/Z
+    local xr = math.asin(t2);
+    local yr = math.atan2(t3, t4);
+    local zr = math.atan2(t1, t0);
+    --Return result
+    return {math.deg(xr),math.deg(yr),math.deg(zr)}
+end
+
+--Wait, used with corotuine
+function wait(time)
+    local start = os.time()
+    repeat coroutine.yield(0) until os.time() > start + time
+end
+
+--Button creation
+--For print/roll, used 2 buttons, 1 display and 1 hidden for functionality
+--
+function createDisplayAndFunctionButtons()
+    --Number display at bottom
+    local params = {
+        label=howManyDice, click_function="buttonClick_roll",
+        function_owner=self, position={0,0.1,1.45}, height=0, width=0,
+        font_size=320, font_color={1,1,1}
+    }
+    self.createButton(params)--display BUTTON 0
+    params.label, params.height, params.width, params.color = "", 350, 350, {0,0,0,0}
+    self.createButton(params)--function BUTTON 1
+
+    --Print ON/OFF ✗✓
+    params = {
+        label=printTable[trueTwo(printResults)], click_function="buttonClick_print",
+        function_owner=self, position={0.69,0.1,-1.06}, height=0, width=0,
+        font_size=118, font_color={1,1,1}, color={1,1,1}
+    }
+    self.createButton(params)--display BUTTON 2
+    params.label, params.height, params.width, params.color = "", 350, 350, {1,1,1,0}
+    params.position={0.7,0.1,-1.22}
+    self.createButton(params)--function BUTTON 3
+
+    --half ON/OFF - Button Disabled and used to display dice mod
+    params = {
+        label=modOutput(), click_function="buttonClick_half",
+        function_owner=self, position={-1,0.1,1.14}, height=0, width=0,
+        font_size=100, font_color={1,1,1}, color={1,1,1}
+    }
+
+    self.createButton(params)--display BUTTON 4
+        params.label, params.height, params.width, params.color = "", 0, 0, {1,1,1,0}
+        params.position={-1,0.1,1}
+    self.createButton(params)--function BUTTON 5
+
+    --Kill ON/OFF
+    --local killStatus = 1 -- ✗✓
+    --killStatus = trueTwo(killResults)
+    params = {
+        label=killTable[trueTwo(killResults)], click_function="buttonClick_kill",
+        function_owner=self, position={-0.72,0.1,-1.06}, height=0, width=0,
+        font_size=118, font_color={1,1,1}, color={1,1,1}
+    }
+
+    self.createButton(params)--display BUTTON 6
+    params.label, params.height, params.width, params.color = "", 350, 350, {1,1,1,0}
+    params.position={-0.7,0.1,-1.22}
+    self.createButton(params)--function BUTTON 7
+
+    --Stun and modifiers
+    params = {
+        label=stunOutput(), click_function="buttonClick_stun",
+        function_owner=self, position={0.98,0.1,1.14}, height=0, width=0,
+        font_size=100, font_color={1,1,1,transTable[trueTwo(killResults)]}, color={1,1,1}
+    }
+
+    self.createButton(params)--display BUTTON 8
+    params.label, params.height, params.width, params.color = "", 300, 300, {1,1,1,0}
+    params.position={1,0.1,1}
+    self.createButton(params)--function BUTTON 9
+
+    --Plus and Minus buttons for stun mod
+    params={function_owner=self, height=100, width=100, color={1,1,1,0}}
+    params.click_function, params.position = "buttonClick_StunModMinus", {0.67,0.1,1.42}
+    self.createButton(params)--function BUTTON 10
+    params.click_function, params.position = "buttonClick_StunModPlus", {1.42,0.1,0.65}
+    self.createButton(params)--function BUTTON 11
+
+    --Plus and Minus buttons for howManyDice
+    params={function_owner=self, height=350, width=350, color={0,0,0,0}}
+    params.click_function, params.position = "buttonClick_minus", {-1.42,0.1,0}
+    self.createButton(params)--function BUTTON 12
+    params.click_function, params.position = "buttonClick_plus", {1.42,0.1,0}
+    self.createButton(params)--function BUTTON 13
+
+    -- dice mod increase buttons
+    params={function_owner=self, height=100, width=100, color={1,1,1,0}}
+    params.click_function, params.position = "buttonClick_ModPlus", {-0.67,0.1,1.42}
+    self.createButton(params)--function BUTTON 14
+    params.click_function, params.position = "buttonClick_ModMinus", {-1.42,0.1,0.65}
+    self.createButton(params)--function BUTTON 15
+
+    --Clear button disabled
+    --params = {
+    --    click_function="buttonClick_clear", function_owner=self,
+    --    position={-0.7,0.1,-1.22}, height=350, width=350, color={1,1,1,0}
+    --}
+    --self.createButton(params)
+end

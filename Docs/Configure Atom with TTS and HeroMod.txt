@@ -1,0 +1,15 @@
+Placeholder
+
+install tts integration for atom
+File->Settings->Packages
+Click the "settings" button in the "tabletopsimulator-lua" tab
+Set the "Base path for files you wish to bundle or #Include" to the Local Github clone directory
+
+Gobal.ttslua should only have one line in it
+#include !/HeroMod/heromod
+
+Similarly, the Dicerollers and the SceneBuilder only have one line also
+#include !/DiceRoller/diceroller
+#include !/SceneBuilder/scenebuilder
+
+Atom will grab the files from the corresponding directory and unpack them into the object when sending it to TTS

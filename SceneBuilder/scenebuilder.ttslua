@@ -1,0 +1,627 @@
+--
+--basic events
+--
+function onLoad(script_state)
+	version = "0.95 (2022031712)"
+
+	settings = {
+		debug        = true,
+		NPCStartSlot = 10,
+		color        = {
+			player   = "Green",
+			nonplayer= "Yellow",
+			success  = "Green",
+			info     = "Blue",
+			error    = "Red",
+			disabled = "rgb(0.4, 0.4, 0.4)",
+			enabled  = "rgb(0.9, 0.9, 0.9)",
+		},
+		fontSize = 32,
+		lang                 = {
+			count_sep        = " of ",
+			no_object        = "No object found! Possibly it was removed?",
+			no_perms         = "This feature is only available to game admins",
+			notes_refreshed  = function(i) return "Added "..i.." notes" end,
+			note_exists      = "A note for this object already exists. Update or remove it below.",
+			note_removed     = "The GM note has been cleared from the object",
+			note_blank       = "There are currently no GM notes stored. Click the refresh button to scan for notes.",
+			note_blank_title = "No notes",
+			note_updated     = function(o) return "The note for the object '"..(o.getName() or "(no name)").."' ("..o.guid..") has been updated" end,
+		},
+		look_pitch    = 35,
+		look_distance = 15
+	}
+
+	data = {
+		notes     = {}, --contains the notes as fetched from objects
+		guids     = {}, --dynamic table of object guid indexes with notes index value
+		current   = 0,  --notes index of current view
+		scene     = {}, --contains the guids of objects located that should be in the scene
+		global_ui = false, --has the ui been copied to global
+		auto_rename = true
+	}
+
+	if script_state == '' then
+	else
+		local saved_state = JSON.decode(script_state)
+
+		if saved_state then
+			--if settings.debug then log("JSON: "..dump(saved_state).." ") end
+			if saved_state.data then
+				log("JSON data detected")
+				data = saved_state.data
+				if data.auto_rename == nil then
+					data.auto_rename = true
+				end
+				buildGIndex()
+				if settings.debug then log("Loaded "..#data.notes.." notes from save data") end
+        sbsceneCleanup()
+				-- If the GUI was copied to the global UI, it won't load to the screen by default, so "fake it"
+				-- if data.global_ui then
+				-- 	-- turn it off, then toggle it to trigger the rebuild
+				-- 	data.global_ui = false
+				-- 	xml_toggleGlobalVisible()
+				-- end
+			end
+		end
+	end
+	Wait.frames(checkXMLRefs, 5)
+end
+
+-- check the scene list and remove any entries that are not present on the table
+function sbsceneCleanup ()
+	-- log("sbsceneCleanup")
+	local lsc = #data.scene
+	--make a copy of the data.scene instead of just referring to it
+	local lscene = {}
+	for i, v in pairs(data.scene) do
+		lscene[i] = v
+	end
+
+	for i=1,lsc do
+		-- get the guid from the local copy
+		v = string.sub(lscene[i],3)
+    if getObjectFromGUID(v) == nil then
+      -- log ("removing absent GUID ("..v..")")
+			-- i is not the right index to remove, we have to figure that out each time
+			for ii,vv in pairs(data.scene) do
+				if string.sub(vv,3) == v then
+					table.remove(data.scene, ii)
+				end
+			end
+    end
+  end
+	-- log ("Num in scene:"..#data.scene)
+end
+
+function dump(o)  --dump the output of a table to a string suitable for printing
+	if type(o) == 'table' then
+	   local s = '{ '
+	   for k,v in pairs(o) do
+		  if type(k) ~= 'number' then k = '"'..k..'"' end
+		  s = s .. '['..k..'] = ' .. dump(v) .. ','
+	   end
+	   return s .. '} '
+	else
+	   return tostring(o)
+	end
+ end
+
+function getScene() -- Allows other objects to get our scene data easily
+	return data.scene
+end
+
+function onSave()
+	if data and data.notes and #data.notes > 0 then
+		local save_state = {
+			data = data
+		}
+		return JSON.encode(save_state)
+	end
+end
+
+function onObjectSpawn(obj)  -- Add any objects spawned with GM notes to the notepad
+	local g = obj.guid
+	if obj.getGMNotes() and obj.getGMNotes() ~= "" then
+		if data.auto_rename == true then
+			local loName = obj.getName()
+			local s,e
+
+			s,e = string.find(loName," #")
+			if s and e then
+				loName = string.sub (loName,1,s-1)
+			end
+			local llastObjFound
+			if loName ~= "" then
+				local lCount = 0
+				for i=1,#data.notes do
+					s,e = string.find (data.notes[i].name,loName)
+					if s==1 and e==string.len(loName) then
+						lCount = lCount +1
+						--log ("Got a duplicate")
+						llastObjFound = data.notes[i].guid
+						--log ("original guid "..llastObjFound)
+						--break
+					end
+				end
+				if lCount > 0 then
+					-- do some renaming on things
+					if lCount == 1 then
+						--log ("rename orginal")
+						local lo = getObjectFromGUID(llastObjFound)
+						if lo then
+							lo.setName(loName.." #1")
+							for i=1,#data.notes do
+								if data.notes[i].name == loName then
+									data.notes[i].name = loName.." #1"
+								end
+							end
+						else
+							--log("unable to find guid "..llastObjFound)
+						end
+					end
+					obj.setName(loName.." #"..lCount+1)
+				end
+			end
+		end
+		table.insert(data.notes, {
+			guid     = obj.guid,
+			name     = obj.getName(),
+			note     = obj.getGMNotes(),
+			fontSize = settings.fontSize
+		})
+		buildGIndex()
+		if data.current == 0 then
+			data.current = #data.notes
+		end
+		if settings.debug then log("Object '"..(obj.getName() or "(no name)").."' ("..g..") spawned with note, adding note") end
+		updateXml()
+	end
+end
+
+function onObjectDestroy(obj)
+	local g = obj.guid
+	if data.guids[g] then
+    sbsceneCleanup()
+		table.remove(data.notes, data.guids[g])
+		buildGIndex()
+		if data.current > #data.notes then
+			data.current = #data.notes
+		end
+		if settings.debug then log("Object '"..(obj.getName() or "(no name)").."' ("..g..") was destroyed, removing note") end
+		updateXml()
+	end
+end
+
+-- function rebuilds the GUID index
+function buildGIndex()
+	data.guids = {}
+	for k,v in ipairs(data.notes) do
+		data.guids[v.guid] = k
+	end
+end
+
+-- returns nil if not in the scene, and PC or NP if the guid is a player or non-player
+function isGUIDinScene (g)
+	local lg = nil
+
+	for _,v in pairs(data.scene) do
+		if v then
+			if string.sub(v,3) == g then
+				lg = v
+				break
+			end
+		end
+	end
+	if lg == nil then
+		return nil
+	else
+		return string.sub(lg,1,2)
+	end
+end
+
+--
+--xml ui management
+--
+function checkXMLRefs()
+	if self.guid~="card01" then
+		if settings.debug then log("XML GUID miss-match detected. Updating XML") end
+		local xml = self.UI.getXml()
+		xml = xml:gsub("card01", self.guid)
+		self.UI.setXml(xml)
+	end
+	Wait.frames(updateXml, 5)
+end
+
+function updateXml()
+	--updates the xml ui anytime with current data. triggered anytime data changes
+	--set default values for data strings
+	local name         = settings.lang.note_blank_title
+	local desc         = settings.lang.note_blank
+	local qty          = data.current..settings.lang.count_sep..#data.notes.."  ("..#data.scene..")"
+	local guid         = data.target or "no guid"
+	local interactable = false
+	local color        = settings.color.disabled
+	local fontSize     = settings.fontSize
+	local inScene      = false
+	--create table of UIs to update (self, or self and global)
+	local uis          = {
+		self.UI
+	}
+	if data.global_ui then table.insert(uis, UI) end
+
+	--grab info for current note, if exists
+	if #data.notes > 0 and data.current > 0 then
+		name         = data.notes[data.current].name
+		desc         = data.notes[data.current].note
+		guid         = data.notes[data.current].guid
+		fontSize     = data.notes[data.current].fontSize
+		color        = settings.color.enabled
+		inScene      = isGUIDinScene(guid)
+		interactable = true
+	end
+	--update the uis
+	for _,ui in ipairs(uis) do
+		ui.setValue("xml_obj_name", name)
+		ui.setAttributes("xml_obj_desc", {
+			text         = desc,
+			interactable = tostring(interactable),
+			textColor    = color,
+			fontSize     = tostring(fontSize)
+		})
+		ui.setValue("xml_current_index", qty)
+		ui.setAttribute("xml_obj_guid", "text", guid)
+
+		if inScene then
+			--ui.setValue("xml_in_scene", "Participating in Scene")
+			--log(inScene.. "  - "..guid)
+			if inScene == "PC" then
+				ui.setAttributes("xml_in_scene", {
+					text      = "Player in Scene",
+					color = settings.color.player
+				})
+			else
+				ui.setAttributes("xml_in_scene", {
+					text      = "Non-Player in Scene",
+					color = settings.color.nonplayer
+				})
+			end
+		else
+			ui.setAttributes("xml_in_scene", {
+				text      = "Not in Scene",
+				color = settings.color.error
+			})
+		end
+	end
+end
+
+--
+--xml ui triggers
+--
+function iif ( cond , T , F )
+    if cond then return T else return F end
+end
+
+function twodigitnumber(number)
+  if (number != nil) then
+    local numstring = tostring(number)
+    if string.len(numstring) > 1 then
+      return numstring
+    end
+    return "0" .. numstring
+  end
+  return "00"
+end
+
+function dump_scene()
+	log(dump(data.scene))
+end
+
+function xml_populateScene()
+	broadcastToAll("GM is populating the scene...",stringColorToRGB("Red"))
+	local i
+	local charLoaded
+	local ifos --first open slot
+	local ilfs -- last filled slot
+	local bFound
+	local scene = data.scene
+
+	--log ("getting global vars")
+	--local scene = obj.call("getScene")
+
+	local globalVars = Global.call("exgetGlobalVars")
+	if globalVars == nil then
+		log ("unable to load HeroMod Global Vars")
+		return
+	end
+	--log ("got global vars")
+
+	--log (dump(globalVars))
+	local lcharLib = globalVars.charLib --work with a local copy so that we can populate it as we go, without waiting for web load calls
+	for i=1, globalVars.maxLibSize  do
+		bFound = false
+		if globalVars.charLibGUID[i] then
+			-- log("is GUID "..tostring(charLibGUID[i]).." still in scene?")
+			for _,v in pairs(scene) do
+				-- log ("does "..tostring(v).." == "..tostring(charLibGUID[i]))
+				if string.sub(v,1,2) == "PC" or string.sub(v,1,2) == "NP" then
+					v = string.sub(v,3)
+				end
+				if v == globalVars.charLibGUID[i] then
+					bFound = true
+					break
+				end
+			end
+			if bFound == false then -- it wasn't found in scene, remove the character from the slot
+				log("removing character from slot "..twodigitnumber(i))
+				local params = {
+					player = "LuaPlayer",
+					value = -2,
+					id = twodigitnumber(i).."line"
+				}
+				--log(dump(params))
+				Global.call ("exeditChar", params)
+			end
+		end
+	end
+
+	--log ("excess characters removed")
+
+	local startSlot = 1
+	for _,g in pairs(scene) do
+		if string.sub(g,1,2) == "PC" or string.sub(g,1,2) == "NP" then
+			if string.sub(g,1,2) == "PC" then
+				-- log("PC - Starting @ 1"..g)
+				startSlot = 1
+			else
+				-- log("NPC - Starting @ 11"..g)
+				startSlot = settings.NPCStartSlot
+			end
+			-- from this point, we only care about the GUID
+			g = string.sub(g,3)
+		end
+		-- log ("Looking for ("..g..") in list of players")
+		ifos = nil
+		bFound = false
+		for i=startSlot, globalVars.maxLibSize  do
+			charLoaded = iif(lcharLib[i].name != nil, true ,false)
+			if not(charLoaded) then -- have an empty slot
+				if ifos == nil then
+					ifos = i
+					-- log("First Open Slot found: "..tostring(ifos))
+				end
+			else
+				-- log ("checking slot "..twodigitnumber(i).." for GUID")
+				if globalVars.charLibGUID[i] != nil then
+					-- log("GUID FOUND for slot "..twodigitnumber(i))
+					if globalVars.charLibGUID[i] == g then
+						bFound = true
+					end
+				else
+					-- log("GUID NOT found for slot "..twodigitnumber(i))
+				end
+			end
+		end --for
+		if bFound then
+			-- log("found matching GUID in list, skipping")
+		else
+			if ifos then
+				-- this is where we load a character to the list and set its "charFromGUID" value
+				local objMini = getObjectFromGUID(g)
+				if objMini then
+					log("Adding '"..objMini.getName().."' to slot "..tostring (twodigitnumber(ifos)))
+					-- log ("Character Name: "..objMini.getName())
+					globalVars.charLibGUID[ifos] = g
+					lcharLib[ifos].name = "Newly Filled Slot"
+					ilfs = ifos
+					local params = {
+						player = "LuaPlayer",
+						value = objMini.getGMNotes(),
+						id = twodigitnumber(ifos).."inputname"
+					}
+					--log(dump(params))
+					Global.call ("exloadChar", params)
+					-- have to set the name though, but we don't know it.  Just fill in anything
+				end
+			else
+				log("No slots remaining to add "..g.." in max of "..tostring(maxLibSize))
+			end
+		end
+		-- if we filled slots, lets wait to ensure they're populated properly
+		-- if ilfs then
+		-- 	Wait.condition (function() sccheckSlots() end,function() return scisLineNameSet(ilfs) end,10,function() log("Timeout waiting for slots to fill.") end)
+		-- end
+	end
+
+end
+
+-- parameter 1 coming from the GUI is the player object, who knew?
+function xml_add_to_scene(_,gtype)
+	local g = data.notes[data.current].guid
+
+	if isGUIDinScene(g) == nil then
+		local obj = getObjectFromGUID(g)
+		-- if settings.debug then log("Adding '"..(obj.getName() or "(no name)").."' ("..g..") to particate in scene") end
+		table.insert(data.scene, gtype..g)
+		updateXml()
+	elseif isGUIDinScene(g) ~= gtype then
+		-- clicked the button for the type it isn't
+		xml_remove_from_scene()
+		local obj = getObjectFromGUID(g)
+		-- if settings.debug then log("Adding '"..(obj.getName() or "(no name)").."' ("..g..") to particate in scene") end
+		table.insert(data.scene, gtype..g)
+		updateXml()
+	end
+end
+
+function xml_remove_from_scene()
+	local g = data.notes[data.current].guid
+
+	if isGUIDinScene(g) ~= nil then
+		local obj = getObjectFromGUID(g)
+		-- if settings.debug then log("Removing '"..(obj.getName() or "(no name)").."' ("..g..") from participation in scene") end
+		for i,v in pairs(data.scene) do
+			if string.sub(v,3) == g then
+				table.remove(data.scene, i)
+			end
+		end
+		updateXml()
+	end
+end
+
+function xml_toggleGlobalVisible()
+	--copies the XML ui to the global UI space, or removes it
+	if data.global_ui then
+		--blank the ui
+		UI.setXmlTable({{}})
+	else
+		--clone the ui from this object, change a class and set the toggle button to active
+		local xml                = self.UI.getXmlTable()
+		xml[2].attributes.active = "true"
+		xml[3].attributes.class  = "Global"
+		UI.setXmlTable(xml)
+	end
+	data.global_ui = not data.global_ui
+end
+
+-- is this used any longer?
+function xml_toggleVisible(player, value, id)
+	--toggle the visibility of the main panel in the global UI
+	if data.global_ui then
+		local status = UI.getAttribute("main", "active")
+		if status=="false" then
+			UI.show("main")
+		else
+			UI.hide("main")
+		end
+	end
+end
+
+function xml_refresh(player, value, id)
+	--scans all objects for GM notes and adds them to data.notes
+	local objs = getAllObjects()
+	data.notes = {}
+	for _,obj in pairs(objs) do
+		if obj.getGMNotes() and obj.getGMNotes() ~= "" then
+			table.insert(data.notes, {
+				guid     = obj.guid,
+				name     = obj.getName(),
+				note     = obj.getGMNotes(),
+				fontSize = settings.fontSize
+			})
+		end
+	end
+	--set last note as current note
+	data.current = #data.notes
+
+	--rebuild the guid index
+	buildGIndex()
+
+	--show changes
+	updateXml()
+	broadcastToColor(settings.lang.notes_refreshed(data.current), player.color, settings.color.success)
+end
+
+function xml_removeNote(player, value, id)
+	if settings.debug then log(player.color.." removed note "..data.current) end
+	--remove the current note for the object
+	if not player.admin or #data.notes < 1 then return false end
+
+	--remove the GMNote on the object
+	local obj = getObjectFromGUID(data.notes[data.current].guid)
+	if obj then	obj.setGMNotes() end
+
+	--remove the note
+	table.remove(data.notes, data.current)
+
+	--rebuild the index of guids and push changes to UI
+	buildGIndex()
+	xml_next(player, value, id)
+	updateXml()
+	broadcastToColor(settings.lang.note_removed, player.color, settings.color.success)
+end
+
+function xml_updateNote(player, value, id)
+	--triggered when a player finishes editing the main note field
+	if not player.admin or #data.notes < 1 then return false end
+	local c   = data.notes[data.current]
+	local obj = getObjectFromGUID(c.guid)
+	c.note    = value
+	obj.setGMNotes(value)
+	broadcastToColor(settings.lang.note_updated(obj), player.color, settings.color.success)
+end
+
+function xml_next(player, value, id)
+	--move through currently selected object
+	if not player.admin or #data.notes < 1 then return false end
+	data.current = data.current + 1
+	--loop at end
+	if data.current > #data.notes then
+		data.current = 1
+	end
+	updateXml()
+end
+
+function xml_prev(player, value, id)
+	--move through currently selected object
+	if not player.admin or #data.notes < 1 then return false end
+	data.current = data.current - 1
+	--loop at start
+	if data.current < 1 then
+		data.current = math.max(#data.notes, 1)
+	end
+	updateXml()
+end
+
+function xml_pingObject(player, value, id)
+	--pings the currently selected object
+	if not player.admin or #data.notes < 1 then return false end
+	local obj = getObjectFromGUID(data.notes[data.current].guid)
+	if obj then
+		local b = obj.getBounds()
+		b.center.y = b.center.y + (b.size.y/2) - 0.5
+		player.pingTable(b.center)
+	else
+		broadcastToColor(settings.lang.no_object, player.color, settings.color.error)
+	end
+end
+
+function xml_cameraToObject(player, value, id)
+	--moves the player camera to the currently selected object
+	--offset settings are at the top in settings.look_*
+	if not player.admin or #data.notes < 1 then return false end
+	local obj = getObjectFromGUID(data.notes[data.current].guid)
+	local pos = obj.getPosition()
+	if obj then
+		player.lookAt({
+			position = obj.getPosition(),
+			pitch    = settings.look_pitch,
+			yaw      = player.getPointerRotation()+180,
+			distance = settings.look_distance,
+		})
+	else
+		broadcastToColor(settings.lang.no_object, player.color, settings.color.error)
+	end
+end
+
+function xml_fontSizeUp()
+	--increase the current fontSize and, if selected, the current note
+	if settings.fontSize < 100 then
+		if #data.notes > 0 and data.current > 0 and data.notes[data.current].fontSize then
+			data.notes[data.current].fontSize = data.notes[data.current].fontSize + 1
+		end
+		settings.fontSize = settings.fontSize + 1
+	end
+	updateXml()
+end
+
+function xml_fontSizeDown()
+	--decrease the current fontSize and, if selected, the current note
+	if settings.fontSize > 6 then
+		if #data.notes > 0 and data.current > 0 and data.notes[data.current].fontSize then
+			data.notes[data.current].fontSize = data.notes[data.current].fontSize - 1
+		end
+		settings.fontSize = settings.fontSize - 1
+	end
+	updateXml()
+end

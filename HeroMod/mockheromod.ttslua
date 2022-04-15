@@ -1,0 +1,75 @@
+--[[ Lua code. See documentation: https://api.tabletopsimulator.com/ --]]
+
+--[[ The onLoad event is called after the game save finishes loading. --]]
+function onLoad() -- prepare all activities upon load
+  --colorSet =  Set(colorDesc)
+  --buildAssets()
+  sccreateLibrary(maxLibSize)
+  --scloadBaseCharacter(baseCharacter)
+  --buildUI()
+  printToAll ("Hero System loading",{r=0,g=0.2,b=0})
+  printToAll ("please wait ≈30 seconds",{r=0,g=0.2,b=0})
+end
+
+function sccreateLibrary (numberOfCharacters) -- create empty character library
+  for i=1,numberOfCharacters do
+    table.insert(charLib, {})
+    -- not sure if I want to initialize this as a table, it should be an array
+    --table.insert(charLibGUID, {})
+  end
+end
+
+--[[ The onUpdate event is called once per frame. --]]
+function onUpdate()
+    --[[ print('onUpdate loop!') --]]
+end
+
+-- function onObjectStateChange(object, old_state_guid)
+    -- log("Global - New state GUID: " .. object.guid)
+    -- log("Global - Old state GUID: " .. old_state_guid)
+-- end
+
+function onObjectStateChange(object, old_state_guid)
+  log("New state GUID: "..object.guid)
+  log("Previous state GUID: "..old_state_guid)
+  local stateObject = getObjectFromGUID(object.guid)
+  state = stateObject.getStateId()
+  if state then
+    log("State "..tostring(state))
+  end
+end --function onObjectStateChange
+
+
+--Mock HeroMod functions for testing
+
+charLib = {} -- Character Library which the browsers access by line number
+charLibGUID = {} -- Character Library which the browsers access by line number
+maxLibSize = 50
+NPCStartSlot = 10
+
+function exgetGlobalVars()  -- allows for easy retun of the common global variables
+  local globalVars = {
+    charLib = charLib,
+    charLibGUID = charLibGUID,
+    maxLibSize = maxLibSize,
+    turn = turn,
+    segment = segment
+  }
+  return globalVars
+end
+
+function exeditChar(params)
+  sceditChar (params.player, params.value, params.id)
+end
+
+function exloadChar(params)
+  scloadChar (params.player, params.value, params.id)
+end
+
+function sceditChar(player, value, id) -- edit or delete character
+  log ("sceditChar: player="..tostring(player).." value="..tostring(value).." id="..tostring(id))
+end
+
+function scloadChar(player, value, id) -- take name from add character and load the named character
+  log ("scloadChar: player="..tostring(player).." value="..tostring(value).." id="..tostring(id))
+end
