@@ -2775,7 +2775,7 @@ end
 
 function getPhasingTable()
 	local phasingTable = {}
-	for i,player in pairs(ccplayers) do
+	for _,player in ipairs(ccplayers) do
 		if (speedWhenChart[player.speed][segment] == 1) and (player.isAborted == false) and (player.hasNotPhased) and (not(player.isHolding)) and (not(player.isSpeedChange)) then
 			table.insert(phasingTable, player)
 		end
@@ -3242,7 +3242,7 @@ function addPlayer(player,state,id,noRebuild)  -- NOT USED ANYMORE
   announce(ccnonCombat[selectedPlayer].name  .. ", entered combat on segment " .. segment,ccnonCombat[selectedPlayer])
   local checkDone = false
 
-  for i,player in pairs(ccplayers) do -- should be replaced with table sort .. very slow
+  for i,player in ipairs(ccplayers) do -- should be replaced with table sort .. very slow
     local whichCurrent = player.stats.str.current
     if dexToCheck >= player.stats.dex[whichCurrent].value then
       table.insert(ccplayers,i,ccnonCombat[selectedPlayer])
