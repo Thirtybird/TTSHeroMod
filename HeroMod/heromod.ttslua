@@ -804,6 +804,7 @@ function scstoreChar(gotChar, line) -- put the character in the library
     charLib[lineNum].lineIndex = line -- store index in library with character
     charLib[lineNum].currentColor = "black"
     sclinkGUID (lineNum)
+    scnameFromMini (lineNum)
 
     -- tidy up interface
     updatesUI(line.."line", {
@@ -844,8 +845,20 @@ function sclinkGUID(lineNum)
     else
       log("have a GUID for line number "..twodigitnumber(lineNum).." but cannot find object.")
     end
-  else
-    --log("no GUID set for line "..lineNum)
+  end
+end
+
+function scnameFromMini(lineNum)
+  if charLibGUID[lineNum] then
+    local obj = getObjectFromGUID(charLibGUID[lineNum])
+    if obj then
+      if obj.getName() then -- it has a name, use it
+        log("Using Mini Name '"..obj.getName().."' instead of JSON loaded name '"..charLib[lineNum].name.."'")
+        charLib[lineNum].name = obj.getName()
+      end
+    else
+      log("have a GUID for line number "..twodigitnumber(lineNum).." but cannot find object.")
+    end
   end
 end
 
