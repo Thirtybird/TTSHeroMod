@@ -179,11 +179,18 @@ function onObjectSpawn(obj)  -- Add any objects spawned with GM notes to the not
 	end
 end
 
+function table.removekey(table, key)
+    local element = table[key]
+    table[key] = nil
+    return element
+end
+
 function onObjectDestroy(obj)
 	local g = obj.guid
 	if data.guids[g] then
-    sbsceneCleanup()
 		table.remove(data.notes, data.guids[g])
+		table.removekey(data.scene,g)
+		sbsceneCleanup()
 		buildGIndex()
 		if data.current > #data.notes then
 			data.current = #data.notes
