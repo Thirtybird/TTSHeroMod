@@ -2930,7 +2930,9 @@ function ccamendHealth(guid)
   else
     local i = getPlayerNumberFromGuid(guid)
     local theChar = ccplayers[i]
-    ccupdateBars(i, theChar)
+    if theChar then
+      ccupdateBars(i, theChar)
+    end
     return true
   end
 end
@@ -3103,7 +3105,6 @@ function reDrawUI(showMessage)
     if isPhasingNow then
       phaser = iif(phasingTable[1].guid == nextPlayer.guid,true,false)
     end
-
     ccupdateBars(i, nextPlayer)
 
     local updateTable = checkUpdates({ id = "nextRowPlayer"..i, checks = {
