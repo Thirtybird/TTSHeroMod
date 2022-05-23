@@ -2443,6 +2443,27 @@ function cblinkToFigure(player,state,id)
   end
 end
 
+function cbcenterOnFigure(player, state, id)
+  local pre = getPre(id)
+  local playerInfo = cbgetPlayerFromPre(pre)
+  local theChar = charLib[tonumber(playerInfo.viewing)]
+  local look_pitch = 35
+  local look_distance = 15
+
+  if theChar.link then
+    local obj = getObjectFromGUID(theChar.link)
+  	--local pos = obj.getPosition()
+  	if obj then
+  		player.lookAt({
+  			position = obj.getPosition(),
+  			pitch    = look_pitch,
+  			yaw      = player.getPointerRotation()+180,
+  			distance = look_distance,
+  		})
+  	end
+  end
+end
+
 function checkDistance(player,state,id)
   --print("Player: ",player,"State: ", state,"ID: ",id)
   local pre = getPre(id)
@@ -4395,7 +4416,7 @@ function buildBrowserUI(pre, character)
         {tag='Text', attributes={id=pre..'linkCancel', onClick = "linkKill", fontSize=15,resizeTextMaxSize=15,resizeTextMinSize=10,resizeTextForBestFit=true,active=true,text=crossMark, color="#CC0000", alignment="MiddleLeft", tooltip="Delete link to figure", tooltipPosition='Above'}},
       }},
       {tag='Cell', attributes={columnSpan=8},children={
-        {tag='Text', attributes={id=pre..'linkName', fontSize=15,resizeTextMaxSize=15,resizeTextMinSize=10,resizeTextForBestFit=true,active=true,text="", color="#00CC00", alignment="MiddleLeft", tooltip="Figure linked to", tooltipPosition='Above'}},
+        {tag='Text', attributes={id=pre..'linkName', onClick = "cbcenterOnFigure", fontSize=15,resizeTextMaxSize=15,resizeTextMinSize=10,resizeTextForBestFit=true,active=true,text="", color="#00CC00", alignment="MiddleLeft", tooltip="Figure linked to", tooltipPosition='Above'}},
       }},
     }}
 
