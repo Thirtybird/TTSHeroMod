@@ -924,7 +924,7 @@ end
 
 function scprepareCharacter(preparingCharacter) -- Take the character from handle character and create dice rolls
   local rollList = {}
-  rollList[1] = {['name']='To Hit', ['halfDice']=false, ['killingAttack']=false, ['gameEdition']=6, ['dice']=3, ['stunMultiplierMod']=0, ['diceMod']=0, ['targetNumber'] = 0, ['targetCheck']=false, ['tool']='3d6', ['tempMod'] = 0, ['toHit'] = true, ['useOCV'] = true, ['useDCV'] = true, ['useRanged'] = true, ['rangeMod'] = 0,}
+  rollList[1] = {['name']='To Hit', ['halfDice']=false, ['killingAttack']=false, ['gameEdition']=6, ['dice']=3, ['level']=0, ['stunMultiplierMod']=0, ['diceMod']=0, ['targetNumber'] = 0, ['targetCheck']=false, ['tool']='3d6', ['tempMod'] = 0, ['toHit'] = true, ['useOCV'] = true, ['useDCV'] = true, ['useRanged'] = true, ['rangeMod'] = 0,}
   for key,value in pairs(preparingCharacter.rolls) do
       table.insert(rollList, value)
   end
@@ -942,6 +942,7 @@ function scprepareCharacter(preparingCharacter) -- Take the character from handl
     preparingCharacter.skills[key].halfDice=false
     preparingCharacter.skills[key].killingAttack=false
     preparingCharacter.skills[key].dice=3
+    preparingCharacter.skills[key].level=tonumber(value.level)
     preparingCharacter.skills[key].diceMod=0
     preparingCharacter.skills[key].targetNumber=rollToNum(value.roll)
     preparingCharacter.skills[key].targetCheck=true
@@ -1892,6 +1893,7 @@ function cbdoRoll(player,state,id,theRoll) -- make a dice roll using a dicerolle
         if rollOrigin == "skdesc" then -- add source of roll to name
           -- override target number if everyman skill
           rollToSend.targetNumber = iif(rollToSend.everyman, 8, rollToSend.targetNumber)
+          rollToSend.targetNumber = rollToSend.targetNumber + rollToSend.level
           rollToSend.name = rollToSend.name .. " (" .. firstToUpper(whichStat.current) .. " ".. whichStat.name .. ")"
         end
         local currentStatChoice = theChar.stats[rollToSend.targetBase].current
@@ -2075,6 +2077,7 @@ function cbGetSkillRoll(theSkill, playerInfo)
   local skill = copy(theSkill)
   if skill.targetBase != "num" and skill.targetBase != nil then
     skill.targetNumber = getRollFromStat(getStatValue(theChar.stats, skill.targetBase))
+    skill.targetNumber = skill.targetNumber + skill.level
   else
     skill.targetNumber = rollToNum(skill.roll)
   end
