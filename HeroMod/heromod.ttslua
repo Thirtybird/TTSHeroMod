@@ -45,7 +45,7 @@ bCharacter = {} -- Base character for deploying
 currentNotebook = {}
 lastMatch = 0
 
-modVersion = "0.96 (2022033116)"
+modVersion = "0.97 (2023032801)"
 
 ccplayers = {}
 ccnonCombat = {}
