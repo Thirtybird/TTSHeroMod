@@ -124,7 +124,7 @@ function onObjectSpawn(obj)  -- Add any objects spawned with GM notes to the not
 	local g = obj.guid
 	if obj.getGMNotes() and obj.getGMNotes() ~= "" then
 		if data.auto_rename == true then
-			log ("auto rename check")
+			--log ("auto rename check")
 			local loName = obj.getName()
 			local s,e
 
@@ -133,7 +133,7 @@ function onObjectSpawn(obj)  -- Add any objects spawned with GM notes to the not
 				loName = string.sub (loName,1,s-1)
 			end
 			local llastObjFound
-			log ("loName: "..loName.." (len:"..string.len(loName)..")")
+			--log ("loName: "..loName.." (len:"..string.len(loName)..")")
 			if loName ~= "" then
 				local matchName = string.lower(loName)
 				local lCount = 0
@@ -145,10 +145,8 @@ function onObjectSpawn(obj)  -- Add any objects spawned with GM notes to the not
 					else
 						dataName = string.lower(data.notes[i].name)
 					end
-
-
 					if dataName == matchName then
-						log ("name matched(#"..i.."-"..dataName..")")
+						--log ("name matched(#"..i.."-"..dataName..")")
 						lCount = lCount +1
 						--log ("Got a duplicate")
 						llastObjFound = data.notes[i].guid
