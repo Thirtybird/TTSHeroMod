@@ -3357,10 +3357,9 @@ function testFunc(player,state,id)
 end
 
 function buildAssets() -- Load game graphics from web
-  local root = 'https://raw.githubusercontent.com/RobMayer/TTSLibrary/master/ui/'
-  local root2 = 'http://www.spellbound.co.uk/tts/controller/'
+  local root = 'https://raw.githubusercontent.com/Thirtybird/TTSHeroMod/main/HeroMod/CustomUIAssets/'
   local assets = { -- ** NEED ** to move all of the below on Rob's server to my own
-    {name='ui_hero2', url=root2..'hero-128.png'},
+    {name='ui_hero2', url=root..'hero-128.png'},
     {name='ui_checkon', url=root..'checkbox_on.png'},
     {name='ui_checkoff', url=root..'checkbox_off.png'},
     {name='ui_arrow_u', url=root..'arrow_u.png'},
@@ -3369,22 +3368,22 @@ function buildAssets() -- Load game graphics from web
     --{name='ui_reload', url=root..'reload.png'},
     --{name='ui_location', url=root..'location.png'},
     --{name='ui_share', url=root..'share.png'},
-    {name='ui_noplayer', url='http://www.spellbound.co.uk/tts/controller/noplayer64.png'},
-    {name='ui_player', url='http://www.spellbound.co.uk/tts/controller/player128.png'},
-    {name='ui_players', url='http://www.spellbound.co.uk/tts/controller/playersicon.png'},
-    {name='ui_run', url='http://www.spellbound.co.uk/tts/controller/run64.png'},
-    {name='ui_fly', url='http://www.spellbound.co.uk/tts/controller/fly64.png'},
-    {name='ui_swim', url='http://www.spellbound.co.uk/tts/controller/swim64.png'},
-    {name='ui_glide', url='http://www.spellbound.co.uk/tts/controller/glide64.png'},
-    {name='ui_swing', url='http://www.spellbound.co.uk/tts/controller/swing64.png'},
-    {name='ui_teleport', url='http://www.spellbound.co.uk/tts/controller/teleport64.png'},
-    {name='ui_tunnel', url='http://www.spellbound.co.uk/tts/controller/tunnel64.png'},
-    {name='ui_leap', url='http://www.spellbound.co.uk/tts/controller/leap64.png'},
-    {name='ui_dice', url='http://www.spellbound.co.uk/tts/controller/dice64.png'},
-    {name='ui_hero', url='http://www.spellbound.co.uk/tts/controller/hero64.png'},
-    {name='ui_line', url='http://www.spellbound.co.uk/tts/controller/line64.png'},
-    {name='ui_target', url='http://www.spellbound.co.uk/tts/controller/target-128.png'},
-    {name='ui_skull', url='http://www.spellbound.co.uk/tts/controller/skull-128.png'},
+    {name='ui_noplayer', url=root..'noplayer64.png'},
+    {name='ui_player', url=root..'player128.png'},
+    {name='ui_players', url=root..'playersicon.png'},
+    {name='ui_run', url=root..'run64.png'},
+    {name='ui_fly', url=root..'fly64.png'},
+    {name='ui_swim', url=root..'swim64.png'},
+    {name='ui_glide', url=root..'glide64.png'},
+    {name='ui_swing', url=root..'swing64.png'},
+    {name='ui_teleport', url=root..'teleport64.png'},
+    {name='ui_tunnel', url=root..'tunnel64.png'},
+    {name='ui_leap', url=root..'leap64.png'},
+    {name='ui_dice', url=root..'dice64.png'},
+    {name='ui_hero', url=root..'hero64.png'},
+    {name='ui_line', url=root..'line64.png'},
+    {name='ui_target', url=root..'target-128.png'},
+    {name='ui_skull', url=root..'skull-128.png'},
   }
   UI.setCustomAssets(assets)
 end
